@@ -128,6 +128,9 @@ help:
 	@echo "  clean         - Remove build files"
 	@echo "  list-sources  - List all source files and targets"
 	@echo "  run-example   - Run specific example (make run-example EXAMPLE=free_fall)"
+	@echo "  run           - Run main program"
+	@echo "  run-all-examples - Run all examples"
+	@echo "  docs		   - Generate documentation using Doxygen"
 	@echo "  help          - Show this help message"
 
 .PHONY: all clean debug help list-sources dirs run-example docs
