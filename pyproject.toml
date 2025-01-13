@@ -1,15 +1,16 @@
 [tool.poetry]
-name = "gr-compact-objects-cpp"
+name = "pulsarmhd"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = ["kkin1995 <7694983+kkin1995@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-numpy = "^2.2.1"
 pandas = "^2.2.3"
 matplotlib = "^3.10.0"
+numpy = "^2.2.1"
+scipy = "^1.15.1"
 
 
 [build-system]
