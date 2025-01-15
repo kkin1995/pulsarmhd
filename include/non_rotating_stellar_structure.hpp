@@ -97,6 +97,8 @@ enum DegenerateGasType {
 };
 // Function declarations
 
+std::tuple<int, double> non_rotating_stellar_structure(std::string name, double rho_c, double r_start, double r_end, double dlogr, double k, double gamma);
+
 /**
  * @brief Computes the mass and pressure derivatives using the Newtonian equations of stellar structure.
  *

@@ -1,8 +1,69 @@
 #include "non_rotating_stellar_structure.hpp"
+#include "rk4.hpp"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <fstream>
+
+std::tuple<int, double> non_rotating_stellar_structure(std::string name, double rho_c, double r_start, double r_end, double dlogr, double k, double gamma) {
+        std::string filename = get_filename(name, rho_c);
+        std::ofstream outfile(filename);
+        if (!outfile.is_open()) {
+            std::cerr << "Error opening file: " << filename << std::endl;
+        }
+        std::cout << "Writing to file: " << filename << std::endl;
+
+        double fraction = 4.0 / 3.0;
+        double log_r_start = log10(r_start);
+        double log_r_end = log10(r_end);
+        double log_m0 = log10(fraction) + log10(M_PI) + 3.0*log10(r_start) + log10(rho_c);
+        double log_p0 = log10(k) + (gamma * log10(rho_c)); 
+        std::vector<double> state = {log_m0, log_p0};
+
+        std::cout << "Initial conditions:" << std::endl;
+        std::cout << "  log_r_start = " << log_r_start << std::endl;
+        std::cout << "  log_m0 = " << log_m0 << std::endl;
+        std::cout << "  log_p0 = " << log_p0 << std::endl;
+        std::cout << "  k = " << k << ", gamma = " << gamma << std::endl;
+
+        outfile << "log_r[cm],log_m[g],log_P[dyne/cm^2]\n";
+
+        int idx = 0;
+        double log_r = log_r_start;
+
+        while (log_r < log_r_end) {
+            state = rk4_step(log_r, dlogr, state, 
+            [k, gamma](double r, const std::vector<double>& s) {
+                return tolman_oppenheimer_volkoff_derivatives(r, s, k, gamma);
+            });
+            log_r += dlogr;
+            outfile << log_r << "," << state[0] << "," << state[1] << "\n";
+
+            // Stop if pressure drops below a threshold
+            if (state[1] < log10(1e-8)) {
+                std::cout << "Surface reached at log_r: " << log_r << std::endl;
+                break;
+            }
+
+            if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
+                std::cout << "Non-finite values at log_r: " << log_r << std::endl;
+                break;
+            }
+
+            if (idx % 100 == 0) { 
+                std::cout << "log_r: " << log_r << ", log_m: " << state[0] 
+                        << ", log_P: " << state[1] << std::endl;
+            }
+
+            idx += 1;
+        }
+        outfile.close();
+        // At end of integration
+        return {idx, state[0]};
+}
 
 std::vector<double> newtonian(double log_r, const std::vector<double>& state, double k, double gamma) {
     double m = pow(10.0, state[0]);
