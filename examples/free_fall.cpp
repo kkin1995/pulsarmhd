@@ -1,6 +1,6 @@
+#include "rk4.hpp"
 #include <cstdio>
 #include <vector>
-#include "rk4.hpp"
 
 std::vector<double> calculate_derivatives(double t, const std::vector<double>& state);
 
