@@ -1,106 +1,95 @@
-#include <cstdio>
 #include <iostream>
-#include <vector>
 #include <cmath>
-#include <functional>
-#include <fstream>
-#include <sstream>      // for std::ostringstream
-#include <iomanip>      // for std::setprecision, std::scientific
-#include <algorithm>    // for std::replace
-#include <string>
-#include "rk4.hpp"
-#include "non_rotating_stellar_structure.hpp"
+#include <gsl/gsl_roots.h>
+#include <gsl/gsl_errno.h>
+
+struct parameters {
+    double m_e;
+    double m_p;
+    double m_n;
+    double lambda_e;
+    double lambda_p;
+    double lambda_n;
+    double n_B;
+};
+
+double f(double x, void* p) {
+    struct parameters* params = (struct parameters*) p;
+    double first_term = params->m_e * pow(1.0 + pow(x, 2.0) * ( pow(params->lambda_e, 2.0) / pow(params->lambda_p, 2.0) ), 1.0/2.0);
+    double second_term = params->m_p * pow(1.0 + pow(x, 2.0), 1.0 / 2.0);
+    double third_term = params->m_n * pow((1.0 + pow(pow(params->lambda_n, 3.0) * params->n_B - ( (pow(params->lambda_n, 3.0) * pow(x, 3.0)) / (pow(params->lambda_p, 3.0)) ), 2.0 / 3.0)), 1.0 / 2.0);
+
+    double result = first_term + second_term - third_term;
+
+    // Debugging output
+    std::cout << "x: " << x << ", first_term: " << first_term << ", second_term: " << second_term << ", third_term: " << third_term << ", result: " << result << std::endl;
+
+    return result;
+}
 
 int main() {
-    double pi = M_PI;
-    double fraction = 4.0 / 3.0;
-    double k;
-    double gamma;
-    std::string name;
-    DegenerateGasType type = NEUTRON_RELATIVISTIC;
-    set_eos_parameters(type, name, k, gamma);
+    double m_p = 1.6726e-24; // grams
+    double m_n = 1.6750e-24; // grams
+    double m_e = 9.1094e-28; // grams
+    double hbar = 1.0546e-27; // ergs * seconds
+    double c = 2.9979e10; // cm / s
+    int status;
+    int iter = 0, max_iter = 100;
+
+    const gsl_root_fsolver_type *T = gsl_root_fsolver_brent;
+    gsl_root_fsolver *s = gsl_root_fsolver_alloc(T);
+    double r = 0.0;
+
+    double lambda_p =  hbar / (m_p * c);
+    double lambda_n =  hbar / (m_n * c);
+    double lambda_e =  hbar / (m_e * c);
+
+    double n_B = 7.37e30; // baryons / cm^3 - Neutron Appearence Density
+
+    double x_p_initial = pow(3 * pow(M_PI, 2.0) * pow(lambda_p, 3.0) * n_B, 1.0/3.0);
+
+    double x_lo = 0.0;
+    double x_hi = x_p_initial * 2.0;
+
+    parameters params = {
+        .m_e = m_e,
+        .m_p = m_p,
+        .m_n = m_n,
+        .lambda_e = lambda_e,
+        .lambda_p = lambda_p,
+        .lambda_n = lambda_n,
+        .n_B = n_B
+   };
+
+    gsl_function F;
+    F.function = &f;
+    F.params = &params;
+
+    if ((status = gsl_root_fsolver_set(s, &F, x_lo, x_hi))) {
+        std::cout << "Error in solver initialization" << std::endl;
+        return 1;
+    }
     
-    double r_start = 10.0; // cm
-    double r_end = 1e10;// cm
-    double log_r_start = log10(r_start);
-    double log_r_end = log10(r_end);
-    double dlogr = 0.001;
+    do {
+        iter++;
+        status = gsl_root_fsolver_iterate(s);
+        r = gsl_root_fsolver_root(s);
+        x_lo = gsl_root_fsolver_x_lower(s);
+        x_hi = gsl_root_fsolver_x_upper(s);
+        status = gsl_root_test_interval(x_lo, x_hi, 0, 1e-6);
+    } while (status == GSL_CONTINUE && iter < max_iter);
 
-    std::vector<double> nonrelativistic_electrons_central_densities = {1e0, 1e1, 1e2, 1e3, 1e4};
-    std::vector<double> relativistic_electrons_central_densities = {1e5, 1e6, 1e7, 1e8, 1e9};
-    std::vector<double> nonrelativistic_neutrons_central_densities = {1e10, 1e11, 1e12, 1e13, 1e14};
-    std::vector<double> relativistic_neutrons_central_densities = {1e15, 1e16, 1e17, 5e17, 1e18, 5e18, 1e19};
-
-    std::vector<double> central_densities;
-    if (type == ELECTRON_NON_RELATIVISTIC) {
-        central_densities = nonrelativistic_electrons_central_densities;
-    } else if (type == ELECTRON_RELATIVISTIC) {
-        central_densities = relativistic_electrons_central_densities;
-    } else if (type == NEUTRON_NON_RELATIVISTIC) {
-        central_densities = nonrelativistic_neutrons_central_densities;
-    } else if (type == NEUTRON_RELATIVISTIC) {
-        central_densities = relativistic_neutrons_central_densities;
+    if (status == GSL_SUCCESS) {
+        std::cout << "Found solution x_p = " << r << std::endl;
+        std::cout << "f(x_p) = " << f(r, &params) << std::endl;
+    } else {
+        std::cout << "Failed to converge after " << iter << " iterations" << std::endl;
+        std::cout << "Current bounds: [" << x_lo << ", " << x_hi << "]" << std::endl;
     }
+    
+    gsl_root_fsolver_free(s);
 
-    for (size_t i = 0; i < central_densities.size(); i++) {
-        std::cout << "Processing " << (i+1) << " of " << central_densities.size() 
-          << " densities..." << std::endl;
-
-        double rho_c = central_densities[i];
-
-        std::cout << "Central Density: " << rho_c << " g/cm^3" << std::endl;
-
-        std::string filename = get_filename(name, rho_c);
-        std::ofstream outfile(filename);
-        if (!outfile.is_open()) {
-            std::cerr << "Error opening file: " << filename << std::endl;
-            continue;
-        }
-        std::cout << "Writing to file: " << filename << std::endl;
-
-        double log_m0 = log10(fraction) + log10(pi) + 3.0*log10(r_start) + log10(rho_c);
-        double log_p0 = log10(k) + (gamma * log10(rho_c)); 
-        std::vector<double> state = {log_m0, log_p0};
-
-        std::cout << "Initial conditions:" << std::endl;
-        std::cout << "  log_r_start = " << log_r_start << std::endl;
-        std::cout << "  log_m0 = " << log_m0 << std::endl;
-        std::cout << "  log_p0 = " << log_p0 << std::endl;
-        std::cout << "  k = " << k << ", gamma = " << gamma << std::endl;
-
-        outfile << "log_r[cm],log_m[g],log_P[dyne/cm^2]\n";
-
-        int idx = 0;
-        double log_r = log_r_start; 
-        while (log_r < log_r_end) {
-            state = rk4_step(log_r, dlogr, state, 
-            [k, gamma](double r, const std::vector<double>& s) {
-                return tolman_oppenheimer_volkoff_derivatives(r, s, k, gamma);
-            });
-            log_r += dlogr;
-            outfile << log_r << "," << state[0] << "," << state[1] << "\n";
-
-            // Stop if pressure drops below a threshold
-            if (state[1] < log10(1e-8)) {
-                std::cout << "Surface reached at log_r: " << log_r << std::endl;
-                break;
-            }
-
-            if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
-                std::cout << "Non-finite values at log_r: " << log_r << std::endl;
-                break;
-            }
-
-            if (idx % 100 == 0) { 
-                std::cout << "log_r: " << log_r << ", log_m: " << state[0] 
-                        << ", log_P: " << state[1] << std::endl;
-            }
-
-            idx += 1;
-        }
-        outfile.close();
-        // At end of integration
-        std::cout << "Total steps: " << idx << std::endl;
-        std::cout << "Final mass: " << pow(10.0, state[0]) / 1.989e33 << " M_Sun" << std::endl;
-    }
+    std::cout << "Results after " << iter << " iterations:" << std::endl;
+    std::cout << "x_p = " << r << std::endl;
+    return 0;
 }
