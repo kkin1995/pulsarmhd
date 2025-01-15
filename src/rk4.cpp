@@ -1,7 +1,7 @@
 #include "rk4.hpp"
 
 std::vector<double> rk4_step(double t, double dt, const std::vector<double>& state,
-    std::function<std::vector<double>(double, const std::vector<double>&)> derivatives) {
+    const std::function<std::vector<double>(double, const std::vector<double>&)> derivatives) {
     
     if (state.empty()) {
         throw std::runtime_error("State vector cannot be empty");
