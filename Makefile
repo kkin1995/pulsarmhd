@@ -6,7 +6,7 @@ DEBUG_FLAGS := -g -DDEBUG
 # Directory structure
 SRC_DIR := src
 INC_DIR := include
-EXAMPLES_DIR := examples
+# EXAMPLES_DIR := examples
 BUILD_DIR := build
 OBJ_DIR := $(BUILD_DIR)/obj
 BIN_DIR := $(BUILD_DIR)/bin
@@ -20,7 +20,7 @@ HEADERS := $(wildcard $(INC_DIR)/*.hpp)
 
 # Object files
 OBJS := $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
-EXAMPLE_OBJS := $(EXAMPLE_SRCS:$(EXAMPLES_DIR)/%.cpp=$(OBJ_DIR)/example_%.o)
+# EXAMPLE_OBJS := $(EXAMPLE_SRCS:$(EXAMPLES_DIR)/%.cpp=$(OBJ_DIR)/example_%.o)
 DEPS := $(OBJS:$(OBJ_DIR)/%.o=$(DEP_DIR)/%.d)
 # EXAMPLE_DEPS := $(EXAMPLE_OBJS:$(OBJ_DIR)/%.o=$(DEP_DIR)/%.d)
 
