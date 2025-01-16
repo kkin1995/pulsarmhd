@@ -41,5 +41,7 @@ docs/
 build/
 data/
 plots/
+*.csv
+*.png
 
 # End of https://www.toptal.com/developers/gitignore/api/c++
