@@ -33,12 +33,13 @@ double phi(double x) {
 }
 
 double f(double x_n, void* p) {
+    if (x_n < 0) return 1e100;
     struct parameters* params = (struct parameters*) p;
-    double first_term = pow(1.0 + pow(params->x_e, 2.0), 1.0 / 2.0) * params->m_e;
+    double first_term = pow(1.0 + pow(x_n, 2.0), 1.0 / 2.0) * params->m_n;
     double second_term = pow(1.0 + pow(params->x_p, 2.0), 1.0 / 2.0) * params->m_p;
-    double third_term = pow(1.0 + pow(x_n, 2.0), 1.0 / 2.0) * params->m_n;
+    double third_term = pow(1.0 + pow(params->x_e, 2.0), 1.0 / 2.0) * params->m_e;
 
-    return first_term + second_term - third_term;
+    return first_term - second_term - third_term;
 }
 
 double f_prime(double x_n, void* p) {
@@ -52,8 +53,8 @@ void f_and_df(double x_n, void* p, double* f_value, double* df_value) {
 }
 
 int main() {
-    double m_p = 1.6726e-24; // grams
-    double m_n = 1.6750e-24; // grams
+    double m_p = 1.672622e-24; // grams
+    double m_n = 1.674927e-24; // grams
     double m_e = 9.1094e-28; // grams
     double hbar = 1.0546e-27; // ergs * seconds
     double c = 2.9979e10; // cm / s
@@ -62,8 +63,8 @@ int main() {
     int status;
     bool converged;
 
-    const gsl_root_fdfsolver_type* T = gsl_root_fdfsolver_newton;
-    gsl_root_fdfsolver* s = gsl_root_fdfsolver_alloc(T);
+    const gsl_root_fsolver_type* T = gsl_root_fsolver_brent;
+    gsl_root_fsolver* s = gsl_root_fsolver_alloc(T);
 
     double lambda_p =  hbar / (m_p * c);
     double lambda_n =  hbar / (m_n * c);
@@ -88,9 +89,6 @@ int main() {
         n_B_list.push_back(n_B_i);
     }
 
-    double prev_x_e = 0.1;
-    double prev_x_n = 0.1;
-
     double n_B_lower = 0.8 * n_B_threshold;
     double n_B_upper = 1.2 * n_B_threshold;
 
@@ -101,20 +99,30 @@ int main() {
 
         if (n_B < n_B_lower) {
             x_n = 0.0;
-            x_p = pow((3.0 * pow(M_PI, 2.0) * pow(lambda_p, 3.0) * n_B), 1.0 / 3.0);
-            x_e = x_p * lambda_e / lambda_p;
+            x_e = pow(3.0 * pow(M_PI, 2.0) * pow(lambda_e, 3.0) * n_B, 1.0 / 3.0);
+            x_p = (m_e / m_p) * x_e;
             converged = 1;
+
+            std::cout << "x_n = " << x_n << std::endl;
+            std::cout << "x_e = " << x_e << std::endl;
+            std::cout << "x_p = " << x_p << std::endl;
         } else if (n_B >= n_B_lower && n_B <= n_B_upper) {
-            // double S = smoothstep(n_B, n_B_lower, n_B_upper);
-            double excess = sqrt((n_B - n_B_threshold) / n_B_threshold); 
-            x_e = pow((3.0 * pow(M_PI, 2.0) * pow(lambda_e, 3.0) * n_B), 1.0 / 3.0);
-            x_p = x_e * lambda_p / lambda_e;
-            x_n = 0.01 * excess;
-            converged = 1;
+            continue;
         } else {
-            x_e = prev_x_e;
-            x_n = pow((3.0 * pow(M_PI, 2.0) * pow(lambda_n, 3.0) * n_B), 1.0 / 3.0);
-            x_p = x_e * lambda_p / lambda_e;
+            // For n_B > n_B_threshold
+            double Q = m_n - m_p;  // Mass difference
+    
+            // Solve me*sqrt(1 + xe^2) = Q for xe
+            double xe_min = sqrt(pow(Q/m_e, 2) - 1);  // Minimum xe at threshold
+    
+            // For higher densities, xe should be larger than this minimum
+            x_e = xe_min * pow(n_B/n_B_threshold, 1.0/3.0);  // Scale with density
+            
+            x_p = (m_e / m_p) * x_e;
+            x_n = pow( ( 3.0 * pow(M_PI, 2.0) * pow(lambda_n , 3.0) * n_B ) / ( 1.0 + 0.0026 ), 1.0 / 3.0 );
+            std::cout << "x_n = " << x_n << std::endl;
+            std::cout << "x_e = " << x_e << std::endl;
+            std::cout << "x_p = " << x_p << std::endl;
 
             parameters params = {
                 .m_e = m_e,
@@ -124,15 +132,32 @@ int main() {
                 .x_e = x_e
             };
 
-            gsl_function_fdf F;
-            F.f = &f;          // Function
-            F.df = &f_prime;   // Derivative
-            F.fdf = &f_and_df; // Combined
+            gsl_function F;
+            F.function = &f;          // Function
             F.params = &params; // Parameters
 
-            double x0 = x_n * 1.1;
+            double x0 = x_n;
 
-            gsl_root_fdfsolver_set(s, &F, x0);
+            double x_lo = 0.0;
+            double x_hi = x0;
+            double f_lo = f(x_lo, &params);
+            double f_hi = f(x_hi, &params);
+
+            std::cout << "Initial: f(x_lo) = " << f_lo << ", f(x_hi) = " << f_hi << std::endl;
+
+            // Keep increasing x_hi until we get a positive value
+            while (f_hi < 0 && x_hi < 1000.0 * x0) {
+                x_hi *= 2.0;
+                f_hi = f(x_hi, &params);
+                std::cout << "Trying x_hi = " << x_hi << ", f(x_hi) = " << f_hi << std::endl;
+            }
+
+            if (f_hi < 0) {
+                std::cerr << "Could not find positive value even at x_hi = " << x_hi << std::endl;
+                // Handle error case
+            } else {
+                gsl_root_fsolver_set(s, &F, x_lo, x_hi);
+            }
         
             int iter = 0, max_iter = 200;
             double x;
@@ -142,8 +167,8 @@ int main() {
                 double f_value = f(x0, &params);
                 double f_prime_value = f_prime(x0, &params);
 
-                status = gsl_root_fdfsolver_iterate(s);  // Perform an iteration
-                x = gsl_root_fdfsolver_root(s);         // Current root estimate
+                status = gsl_root_fsolver_iterate(s);  // Perform an iteration
+                x = gsl_root_fsolver_root(s);         // Current root estimate
 
                 // Convergence test based on the change in x
                 status = gsl_root_test_delta(x, x0, 0, 1e-6);
@@ -162,7 +187,7 @@ int main() {
                 converged = true;
             } else {
                 converged = false;
-                std::cerr << "Newton-Raphson failed for n_B = " << n_B << ". Skipping..." << std::endl;
+                std::cerr << "Failed for n_B = " << n_B << ". Skipping..." << std::endl;
             }
 
             if (status != GSL_CONTINUE && iter >= max_iter) {
@@ -171,10 +196,10 @@ int main() {
             }
 
             x_n = x;
-            prev_x_e = x_e;
-            prev_x_n = x_n;
 
         }
+
+        std::cout << "x_n (root found) = " << x_n << std::endl;
 
         double n_e = (1.0 / (3.0 * pow(M_PI, 2.0) * pow(lambda_e, 3.0))) * pow(x_e, 3.0);
         double epsilon_e = ((m_e * pow(c, 2.0)) / (pow(lambda_e, 3.0))) * chi(x_e);
@@ -190,24 +215,12 @@ int main() {
 
         double P = P_e + P_p + P_n;
         double rho = (epsilon_e + epsilon_p + epsilon_n) / (pow(c, 2.0));
-        double n = n_e + n_p + n_n;
+        double n = n_p + n_n;
 
         if (P < 0 || rho < 0 || n < 0) {
             std::cerr << "Warning: Negative values detected. n_B = " << n_B
                     << ", P = " << P << ", rho = " << rho << ", n = " << n << std::endl;
         }
-
-        // std::cout << "n_e: " << n_e << std::endl;
-        // std::cout << "epsilon_e: " << epsilon_e << std::endl;
-        // std::cout << "P_e: " << P_e << std::endl;
-
-        // std::cout << "n_p: " << n_p << std::endl;
-        // std::cout << "epsilon_p: " << epsilon_p << std::endl;
-        // std::cout << "P_p: " << P_p << std::endl;
-
-        // std::cout << "n_n: " << n_n << std::endl;
-        // std::cout << "epsilon_n: " << epsilon_n << std::endl;
-        // std::cout << "P_n: " << P_n << std::endl;
 
         std::cout << "P: " << P << std::endl;
         std::cout << "rho: " << rho << std::endl;
@@ -218,7 +231,7 @@ int main() {
 
     outfile.close();
 
-    gsl_root_fdfsolver_free(s);
+    gsl_root_fsolver_free(s);
 
     return 0;
 }
