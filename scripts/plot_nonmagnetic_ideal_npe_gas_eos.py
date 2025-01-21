@@ -9,7 +9,7 @@ log_P = data['log_P']
 log_n = data['log_n']
 converged = data['converged']
 
-Gamma = np.gradient(log_P, log_n)
+Gamma = np.gradient(log_P, log_rho)
 
 # Plot log_P vs log_rho
 plt.figure(figsize=(8, 6))
@@ -34,6 +34,7 @@ plt.scatter(log_rho[converged == 1], Gamma[converged == 1], c='green', label='Co
 plt.scatter(log_rho[converged == 0], Gamma[converged == 0], c='red', label='Failed', s=10)
 plt.xlabel(r'$\log_{10}(\rho)$ (g/cm$^3$)')
 plt.ylabel(r'$\Gamma$')
+plt.ylim(0.0, 3.0)
 plt.legend()
 plt.grid(True)
 plt.title('Adiabatic Index')
