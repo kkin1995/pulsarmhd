@@ -115,8 +115,19 @@ run: $(MAIN_BIN)
 # 		$example; \
 # 	done
 
-docs:
-	doxygen Doxyfile
+docs-user:
+	@echo "Generating user documentation..."
+	@cp Doxyfile Doxyfile.tmp
+	@sed -i 's/INTERNAL_DOCS.*=.*/INTERNAL_DOCS = NO/' Doxyfile.tmp
+	@sed -i 's/EXTRACT_PRIVATE.*=.*/EXTRACT_PRIVATE = NO/' Doxyfile.tmp
+	@doxygen Doxyfile.tmp
+	@rm Doxyfile.tmp
+
+docs-maintainer:
+	@echo "Generating maintainer documentation..."
+	@doxygen Doxyfile
+
+docs: docs-maintainer
 
 # Help
 help:
@@ -129,4 +140,4 @@ help:
 	@echo "  docs		   - Generate documentation using Doxygen"
 	@echo "  help          - Show this help message"
 
-.PHONY: all clean debug help list-sources dirs run-example docs
+.PHONY: all clean debug help list-sources dirs run-example docs docs-user docs-maintainer
