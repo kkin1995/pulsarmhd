@@ -1,27 +1,40 @@
-# pulsarmhd
+# PulsarMHD
 
-A C++ library for modelling compact objects such as neutron stars and incorporating the effects of rotation and magnetic fields using both Newtonian and General Relativistic frameworks.
+A C++ library for studying compact objects using both Newtonian and General Relativistic frameworks. This library implements state-of-the-art numerical methods for modeling stellar structure with emphasis on high-density regimes.
 
-## Current Features
-- Newtonian and Tolman-Oppenheimer-Volkoff (TOV) equations of hydrostatic equilibrium.
-- Support for various equations of state:
-    - Non-relativistic electron/neutron gas (polytrope).
-    - Ultra-relativistic electron/neutron gas (polytrope).
-- Numerical Methods:
-    - Runge-Kutta 4th Order (RK4) integration.
-    - Adaptive step size control.
-- Analysis Tools:
-    - Python plotting utilities.
+## Features
+- Multiple hydrostatic equilibrium frameworks:
+  - Newtonian
+  - General Relativistic (TOV)
+- Advanced equation of state implementations
+- Numerical methods:
+  - 4th order Runge-Kutta integration
+  - Adaptive step size control
+  - Sophisticated interpolation techniques
+
+## Prerequisites
+- C++17 or higher
+- GNU Scientific Library (GSL)
+- Make build system
+- Doxygen (for documentation)
 
 ## Building
 ```bash
 git clone https://github.com/yourusername/pulsarmhd.git
 cd pulsarmhd
 make all
-make run
 ```
 
-## Generating Documentation
+## Documentation
+- Generate user documentation:
 ```bash
-doxygen Doxyfile
+make docs-user
 ```
+
+- Generate complete documentation (for maintainers):
+```bash
+make docs-maintainer
+```
+
+## Contributors
+This is a research project under active development. For collaboration inquiries, please contact the maintainers.
