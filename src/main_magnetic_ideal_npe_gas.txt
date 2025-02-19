@@ -1,0 +1,289 @@
+#include <cstdio>
+#include <vector>
+#include <cmath>
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+
+double phi(double x) {
+    if (x < 0.1) {
+        return (1.0 / (15 * pow(M_PI, 2.0))) * (pow(x, 5.0) - (5.0 / 14.0) * pow(x, 7.0) + (5.0 / 24.0) * pow(x, 9.0));
+    } else if (x > 10.0) {
+        return (1.0 / (12 * pow(M_PI, 2.0))) * (pow(x, 4.0) - pow(x, 2.0) + (3.0 / 2.0) * log(2.0 * x));
+    } else {
+        double first_factor = 1.0 / (8.0 * pow(M_PI, 2.0));
+        double second_factor = x * (pow(1.0 + pow(x, 2.0), 1.0 / 2.0)) * ((2.0 / 3.0) * pow(x, 2.0) - 1.0) + std::log(x + pow(1.0 + pow(x, 2.0), 1.0 / 2.0));
+
+        return first_factor * second_factor;
+    }
+}
+
+double chi(double x) {
+    if (x < 0.1) {
+        return (1.0 / (3.0 * pow(M_PI, 2.0))) * (pow(x, 3.0) + (3.0 / 10.0) * pow(x, 5.0) - (3.0 / 56.0) * pow(x, 7.0));
+    } else if (x > 10.0) {
+        return (1.0 / (4.0 * pow(M_PI, 2.0))) * (pow(x, 4.0) + pow(x, 2.0) - (1.0 / 2.0) * log(2.0 * x));
+    } else {
+        double first_factor = 1 / (8.0 * pow(M_PI, 2.0));
+        double second_factor = x * pow((1 + pow(x, 2.0)), 1.0/2.0) * (1.0 + 2.0 * pow(x, 2.0)) - std::log( x + pow(( 1.0 + pow(x, 2.0) ), 1.0 / 2.0) );
+
+        return first_factor * second_factor;
+    }
+}
+
+double psi(double x) {
+    double first_factor = (1.0 / 2.0) * x * sqrt(1.0 + pow(x, 2.0));
+    double second_factor = (1.0 / 2.0) * log(x + sqrt(1.0 + pow(x, 2.0)));
+
+    return first_factor + second_factor;
+}
+
+double eta(double x) {
+    double first_factor = (1.0 / 2.0) * x * sqrt(1.0 + pow(x, 2.0));
+    double second_factor = (1.0 / 2.0) * log(x + sqrt(1.0 + pow(x, 2.0)));
+
+    return first_factor - second_factor;
+}
+
+int main() {
+    double m_electron = 9.1094e-28;
+    double m_proton = 1.672622e-24;
+    double m_neutron = 1.674927e-24;
+    double e_charge = 4.80320425e-10;  // elementary charge in CGS units (statcoulomb)
+    double Q = m_neutron - m_proton;
+    double hbar = 1.0546e-27;
+    double c = 2.9979e10;
+    double B_c_electrons = (pow(m_electron , 2.0) * pow(c, 3.0)) / (hbar * e_charge);
+    double B_c_protons = (pow(m_proton , 2.0) * pow(c, 3.0)) / (hbar * e_charge);
+    double B_ratio_electron = 0.1;
+    double B_ratio_proton = 0.1;
+    double n_B_threshold = 7.37e30;
+    std::vector<double> n_B_list;
+    double n_B_min = 1.0e22; // Before neutron appearance
+    double n_B_max = 1.0e35; // Well into neutron dominance
+    int num_points = 200;    // Higher resolution
+
+    // Logarithmic spacing for smoother transitions
+    for (int i = 0; i < num_points; i++) {
+        double n_B_i = n_B_min * pow(10, i * (log10(n_B_max / n_B_min) / (num_points - 1)));
+        n_B_list.push_back(n_B_i);
+    }
+
+    double n_B_lower = 0.8 * n_B_threshold;
+    double n_B_upper = 1.2 * n_B_threshold;
+
+    std::vector<double> test_densities = {
+        1.0e27,  // Very low density
+        1.0e28,  // Low density
+        1.0e29,  // Medium density
+        7.0e29   // Near neutron appearance
+    };
+
+    double gamma_e;
+    double gamma_p;
+    double gamma_n;
+    double n;
+    double n_e;
+    double n_p;
+    double n_n;
+    double epsilon;
+    double epsilon_e;
+    double epsilon_p;
+    double epsilon_n;
+    double P;
+    double P_e;
+    double P_p;
+    double P_n;
+    double rho;
+    double x_e;
+    double x_p;
+    double x_n;
+    double g_nu;
+    double nu_m_electron; // Maximum Landau Level for the Electron
+    double nu_m_proton; // Maximum Landau Level for the Proton
+    double lambda_e = hbar / (m_electron * c);
+    double lambda_p = hbar / (m_proton * c);
+    double lambda_n = hbar / (m_neutron * c);
+
+    // std::cout << "Critical Fields:\n"
+    //       << "  B_c_electrons = " << B_c_electrons << " G\n"
+    //       << "  B_c_protons = " << B_c_protons << " G\n"
+    //       << "  lambda_e = " << lambda_e << " cm\n"
+    //       << "  lambda_p = " << lambda_p << " cm\n\n";
+    
+    std::string filename = "ideal_magnetic_npe_gas_eos.csv";
+    std::ofstream outfile(filename);
+    if (!outfile.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+    }
+
+    outfile << "log_n,log_P,log_rho\n";
+
+    for (std::size_t i = 0; i < n_B_list.size(); i++) {
+        double n_B = n_B_list[i];
+
+        std::cout << "n_B: " << n_B << "\n";
+
+        // 1. Low Density Regime
+        if (n_B < n_B_lower) {
+            x_n = 0.0;
+
+            n_e = n_B;
+            x_e = pow(3.0 * pow(M_PI, 2.0) * pow(lambda_e, 3.0) * n_e, 1.0 / 3.0); // Non - Magnetic Initial Value
+            double gamma_e_min = 1.0; // Minimum possible value (rest mass)
+            double gamma_e_max = pow(1.0 + pow(x_e, 2.0), 1.0 / 2.0); // Based on non-magnetic estimate
+            double gamma_e_mid;
+            do {
+                gamma_e_mid = (gamma_e_min + gamma_e_max) / 2.0;
+                nu_m_electron = floor((pow(gamma_e_mid, 2.0) - 1.0) / (2.0 * B_ratio_electron));
+
+                std::cout << "Maximum Landau Level (Electrons): " << nu_m_electron << "\n";
+                
+                double summation_n_e = 0.0;
+                double summation_epsilon_e = 0.0;
+                double summation_P_e = 0.0;
+
+                for (int nu = 0; nu <= nu_m_electron; nu++) {
+                    if (pow(gamma_e_mid, 2.0) - 1.0 - (2.0 * nu * B_ratio_electron) < 0) {
+                        break;  // No more valid Landau levels
+                    }
+                    double x = sqrt(pow(gamma_e_mid, 2.0) - 1.0 - (2.0 * nu * B_ratio_electron));
+
+                    // Perform calculations for each Landau level nu
+                    x_e = sqrt(pow(gamma_e_mid, 2.0) - 1.0 - (2.0 * nu * B_ratio_electron));
+                    if (nu == 0) {
+                        g_nu = 1.0;
+                    } else {
+                        g_nu =  2.0;
+                    }
+
+                    summation_n_e += g_nu * x_e;
+                    summation_epsilon_e += g_nu * (1.0 + 2.0 * nu * B_ratio_electron) * psi(x_e / pow(1.0 + 2.0 * nu * B_ratio_electron, 1.0 / 2.0));
+                    summation_P_e += g_nu * (1.0 + 2.0 * nu * B_ratio_electron) * eta(x_e / pow(1.0 + 2.0 * nu * B_ratio_electron, 1.0 / 2.0));
+
+                }
+
+                n_e = ((2.0 * B_ratio_electron) / (pow((2.0 * M_PI), 2.0) * pow(lambda_e, 3.0))) * summation_n_e;
+                epsilon_e = (2.0 * B_ratio_electron / pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * m_electron * pow(c, 2.0) * summation_epsilon_e;
+                P_e = (2.0 * B_ratio_electron / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0))) * m_electron * pow(c, 2.0) * summation_P_e;
+
+                if (n_e > n_B) {
+                    gamma_e_max = gamma_e_mid;
+                } else if (n_e < n_B) {
+                    gamma_e_min = gamma_e_mid;
+                } else {
+                    break;
+                }
+
+            } while ((fabs(gamma_e_max - gamma_e_min) / gamma_e_mid) > 1e-8);
+
+            // Calculate proton properties using charge neutrality
+            n_p = n_e;
+            x_p = pow(3.0 * pow(M_PI, 2.0) * pow(lambda_p, 3.0) * n_p, 1.0 / 3.0); // Non-magnetic initial value
+            double gamma_p_min = 1.0;
+            double gamma_p_max = pow(1.0 + pow(x_p, 2.0), 1.0 / 2.0);
+            double gamma_p_mid;
+
+            do {
+                gamma_p_mid = (gamma_p_min + gamma_p_max) / 2.0;
+                nu_m_proton = floor((pow(gamma_p_mid, 2.0) - 1.0) / (2.0 * B_ratio_proton));
+
+                std::cout << "Maximum Landau Level (Protons): " << nu_m_proton << "\n";
+
+                double summation_n_p = 0.0;
+                double summation_epsilon_p = 0.0;
+                double summation_P_p = 0.0;
+
+                for (int nu = 0; nu <= nu_m_proton; nu++) {
+                    if (pow(gamma_p_mid, 2.0) - 1.0 - (2.0 * nu * B_ratio_proton) < 0) {
+                        break;
+                    }
+                    double x = sqrt(pow(gamma_p_mid, 2.0) - 1.0 - (2.0 * nu * B_ratio_proton));
+
+                    // Perform calculations for each Landau level nu
+                    x_p = sqrt(pow(gamma_p_mid, 2.0) - 1.0 - (2.0 * nu * B_ratio_proton));
+                    if (nu == 0) {
+                        g_nu = 1.0;
+                        
+                    } else {
+                        g_nu =  2.0;
+                    }
+
+                    summation_n_p += g_nu * x_p;
+                    summation_epsilon_p += g_nu * (1.0 + 2.0 * nu * B_ratio_proton) * psi(x_p / pow(1.0 + 2.0 * nu * B_ratio_proton, 1.0 / 2.0));
+                    summation_P_p += g_nu * (1.0 + 2.0 * nu * B_ratio_proton) * eta(x_p / pow(1.0 + 2.0 * nu * B_ratio_proton, 1.0 / 2.0));
+                }
+                
+                double n_p_calculated = ((2.0 * B_ratio_proton) / (pow((2.0 * M_PI), 2.0) * pow(lambda_p, 3.0))) * summation_n_p;
+                epsilon_p = (2.0 * B_ratio_proton / pow(2.0 * M_PI, 2.0) * pow(lambda_p, 3.0)) * m_proton * pow(c, 2.0) * summation_epsilon_p;
+                P_p = (2.0 * B_ratio_proton / (pow(2.0 * M_PI, 2.0) * pow(lambda_p, 3.0))) * m_proton * pow(c, 2.0) * summation_P_p;
+
+                
+                if (n_p_calculated > n_p) {
+                    gamma_p_max = gamma_p_mid;
+                } else if (n_p_calculated < n_p) {
+                    gamma_p_min = gamma_p_mid;
+                } else {
+                    break;
+                }
+
+            } while ((fabs(gamma_p_max - gamma_p_min) / gamma_p_mid) > 1e-8);
+
+            double rest_mass_energy = n_e * m_electron * pow(c, 2.0) + n_p * m_proton * pow(c, 2.0);
+            n = n_e + n_p;
+            epsilon = rest_mass_energy + epsilon_e + epsilon_p;
+            P = P_e + P_p;
+            rho = epsilon / pow(c, 2.0);
+            outfile << std::setprecision(10) << log10(n) << "," << log10(P) << "," << log10(rho) << "\n";
+
+            std::cout << std::scientific;  // Use scientific notation for clarity
+            std::cout << "Test Output for n_B = " << n_B << ":\n"
+                    << "Electrons:\n"
+                    << "  Number Density (n_e) = " << n_e << "\n"
+                    << "  Energy Density (ε_e) = " << epsilon_e << "\n"
+                    << "  Pressure (P_e) = " << P_e << "\n"
+                    << "  Chemical Potential (γ_e) = " << gamma_e_mid << "\n"
+                    << "  Max Landau Level = " << nu_m_electron << "\n"
+                    << "Protons:\n"
+                    << "  Number Density (n_p) = " << n_p << "\n"
+                    << "  Energy Density (ε_p) = " << epsilon_p << "\n"
+                    << "  Pressure (P_p) = " << P_p << "\n"
+                    << "  Chemical Potential (γ_p) = " << gamma_p_mid << "\n"
+                    << "  Max Landau Level = " << nu_m_proton << "\n"
+                    << "Total System:\n"
+                    << "  Total Energy Density (ε) = " << epsilon << "\n"
+                    << "  Total Pressure (P) = " << P << "\n";
+
+            double beta_condition = gamma_e_mid * m_electron + gamma_p_mid * m_proton - m_neutron;
+            if (beta_condition > 0) {
+                // Approaching neutron appearance
+                std::cout << "Warning: Approaching neutron appearance at n_B = " << n_B << "\n";
+            }
+
+            if (fabs(n_e - n_p) > 1e-10 * n_e) {
+                std::cout << "Warning: Charge neutrality violation: " 
+                        << fabs(n_e - n_p)/n_e << " at n_B = " << n_B << "\n";
+            }
+
+            // Physical consistency checks
+
+            // 1. Pressure should be positive
+            if (P < 0) {
+                std::cout << "ERROR: Negative total pressure\n";
+            }
+
+            // 2. Energy density should be greater than rest mass energy density
+            if (epsilon_e + epsilon_p + n_e * m_electron * pow(c, 2.0) + n_p * m_proton * pow(c, 2.0) < 0) {
+                std::cout << "ERROR: Total energy density incorrect.\n";
+            }
+
+
+            // 3. Causality check (speed of sound < c)
+            double cs2 = P / epsilon;  // in units of c^2
+            if (cs2 > 1.0) {
+                std::cout << "ERROR: Speed of sound exceeds c\n";
+            }
+        }
+    }
+    outfile.close();
+}
