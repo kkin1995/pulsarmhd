@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Load data
-data = pd.read_csv("/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/ideal_non_magnetic_npe_gas_eos.csv")
+data = pd.read_csv("/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/ideal_magnetic_npe_gas_eos.csv")
 # Filter data for converged points
 log_rho_conv = data['log_rho'].values
 log_P_conv = data['log_P'].values
@@ -42,12 +42,13 @@ plt.ylabel(r'$\Gamma$')
 plt.ylim(0.0, 3.0)
 plt.grid(True)
 plt.title('Adiabatic Index')
-plt.savefig("gamma_vs_log_rho.png")
+plt.savefig("magnetic_gamma_vs_log_rho.png")
 
 # P-rho plot
 plt.figure(figsize=(8, 6))
-plt.scatter(log_rho, log_P, label="B = 0 (nonmagnetic)", color='black', s=5)
+plt.scatter(log_rho, log_P, label="B = 0 (magnetic)", color='black', s=5)
 plt.xlabel(r'$\log(\rho)$ (g/cm$^3$)')
 plt.ylabel(r'$\log(P)$ (dyn/cm$^2$)')
 plt.grid(True)
-plt.savefig("ideal_non_magnetic_npe_gas_eos.png")
+plt.title('Ideal Magnetic NPE Gas EOS')
+plt.savefig("ideal_magnetic_npe_gas_eos.png")
