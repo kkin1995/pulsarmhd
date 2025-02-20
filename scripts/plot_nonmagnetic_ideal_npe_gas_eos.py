@@ -3,15 +3,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Load data
-data = pd.read_csv("/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/ideal_magnetic_npe_gas_eos.csv")
+data = pd.read_csv("/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/magnetic_bps_equation_of_state.csv")
 # Filter data for converged points
-log_rho_conv = data['log_rho'].values
-log_P_conv = data['log_P'].values
-log_n_conv = data['log_n'].values
-
-# Keep full data for plotting failed points
 log_rho = data['log_rho'].values
 log_P = data['log_P'].values
+log_n = data['log_n'].values
+
+# Create a combined mask to filter out negative values
+mask = (log_rho > 0.0) & (log_P > 0.0) & (log_n > 0.0)
+
+# Apply the combined mask to filter the data
+log_rho = log_rho[mask]
+log_P = log_P[mask]
+log_n = log_n[mask]
 
 # Calculate gamma using finite differences
 def calculate_gamma_physics(log_P, log_rho):
@@ -42,7 +46,7 @@ plt.ylabel(r'$\Gamma$')
 plt.ylim(0.0, 3.0)
 plt.grid(True)
 plt.title('Adiabatic Index')
-plt.savefig("magnetic_gamma_vs_log_rho.png")
+plt.savefig("magnetic_bps_gamma_vs_log_rho.png")
 
 # P-rho plot
 plt.figure(figsize=(8, 6))
@@ -50,5 +54,5 @@ plt.scatter(log_rho, log_P, label="B = 0 (magnetic)", color='black', s=5)
 plt.xlabel(r'$\log(\rho)$ (g/cm$^3$)')
 plt.ylabel(r'$\log(P)$ (dyn/cm$^2$)')
 plt.grid(True)
-plt.title('Ideal Magnetic NPE Gas EOS')
-plt.savefig("ideal_magnetic_npe_gas_eos.png")
+plt.title('Magnetic BPS EOS')
+plt.savefig("magnetic_bps_eos.png")

@@ -152,9 +152,9 @@ int main() {
     }
 
     std::vector<double> n_B_list;
-    double n_B_min = 1.0e26; // Before neutron appearance
+    double n_B_min = 1.0e22; // Before neutron appearance
     double n_B_max = 1.0e35; // Well into neutron dominance
-    int num_points = 10;    // Higher resolution
+    int num_points = 100;    // Higher resolution
 
     // Logarithmic spacing for smoother transitions
     for (int i = 0; i < num_points; i++) {
@@ -162,10 +162,17 @@ int main() {
         n_B_list.push_back(n_B_i);
     }
 
-    double B_ratio_electron = 0.1;
-    double B_ratio_proton = 0.1;
+    double B_ratio_electron = 1.0;
 
     std::vector<EquilibriumComposition> equilibrium_results;
+
+    std::string output_filename = "magnetic_bps_equation_of_state.csv";
+    std::ofstream outfile(output_filename);
+    if (!outfile.is_open()) {
+        std::cerr << "Error: Could not open file " << output_filename << std::endl;
+        return 1;
+    }
+    outfile << "log_n,log_rho,log_P\n";
 
     for (const double nB : n_B_list) {
         EquilibriumComposition best_composition;
@@ -175,6 +182,9 @@ int main() {
         best_composition.optimal_Z = 0;
         best_composition.optimal_element = "None";
         best_composition.converged = false;
+
+        double total_pressure = 0.0;
+        double total_mass_density = 0.0;
 
         for (const auto& nucleus : atomicMasses) {
             int A = nucleus.A;
@@ -187,26 +197,17 @@ int main() {
 
             double mass_energy = mass * 931.494 * 1.602e-6; // Convert u to MeV, then to erg
 
-            std::cout << " Testing nucleus: " << nucleus.element << "-" << A << " (Z=)" << Z << ")\n";
-
             double calculated_electron_density;
             double calculated_electron_energy_density;
             double calculated_electron_pressure;
 
             double nucleon_density = nB / A;
             double electron_density = (Z * nB) / A;
-            std::cout << "Baryon Density: " << nB << " cm^-3\n";
-            std::cout << "Nucleon Density: " << nucleon_density << " cm^-3\n";
-            std::cout << "Electron Density: " << electron_density << " cm^-3\n";
 
             // Solve Coupled Equations
             double x_e = pow(3.0 * pow(M_PI, 2.0) * pow(lambda_e, 3.0) * electron_density, 1.0 / 3.0);
             double gamma_e_lower = 1.0 + 1e-5;
             double gamma_e_upper = std::max(gamma_e_lower, sqrt(1.0 + x_e * x_e));
-            
-            std::cout << "x_e: " << x_e << "\n";
-            std::cout << "Before While: gamma_e_lower: " << gamma_e_lower << "\n";
-            std::cout << "Before While: gamma_e_upper: " << gamma_e_upper << "\n";
 
             double nu_m = 0.0;
             double relative_error = 0.0;
@@ -222,13 +223,9 @@ int main() {
                 }
 
                 iterations++;
-                std::cout << "gamma_e_lower: " << gamma_e_lower << "\n";
-                std::cout << "gamma_e_upper: " << gamma_e_upper << "\n";
-                std::cout << "gamma_e: " << gamma_e << "\n";
 
                 nu_m = floor((pow(gamma_e, 2.0) - 1.0) / (2.0 * B_ratio_electron));
                 nu_m = std::max(nu_m, 0.0);
-                std::cout << "nu_m: " << nu_m << "\n";
 
                 double summation = 0.0;
                 double summation_energy_density = 0.0;
@@ -241,17 +238,11 @@ int main() {
                     summation_energy_density += (nu == 0) ? (1.0 + 2.0 * nu * B_ratio_electron) * psi(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron)) : 2.0 * (1.0 + 2.0 * nu * B_ratio_electron) * psi(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron));
                     summation_pressure += (nu == 0) ? (1.0 + 2.0 * nu * B_ratio_electron) * eta(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron)) : 2.0 * (1.0 + 2.0 * nu * B_ratio_electron) * eta(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron));
                 }
+
                 calculated_electron_density = (2.0 * B_ratio_electron) / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * summation;
-                std::cout << "Calculated Electron Density: " << calculated_electron_density << "\n";
-
                 calculated_electron_energy_density = (2.0 * B_ratio_electron) / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * (m_electron * (c * c)) * summation_energy_density;
-                std::cout << "Calculated Electron Energy Density: " << calculated_electron_energy_density << "\n";
-
                 calculated_electron_pressure = (2.0 * B_ratio_electron) / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * (m_electron * (c * c)) * summation_pressure;
-                std::cout << "Calculated Electron Pressure: " << calculated_electron_pressure << "\n";
-
                 relative_error = (calculated_electron_density - electron_density) / electron_density;
-                std::cout << "Relative Error: " << relative_error << "\n";
 
                 if (fabs(relative_error) < 1.0e-6) {
                     converged = true;
@@ -268,18 +259,13 @@ int main() {
 
             double lattice_energy_density = - 1.444 * pow(Z, 2.0 / 3.0) * pow(e_charge, 2.0) * pow(calculated_electron_density, 4.0 / 3.0);
             double lattice_pressure = lattice_energy_density / 3.0;
-            std::cout << "Lattice Energy Density: " << lattice_energy_density << "\n";
-            std::cout << "Lattice Pressure: " << lattice_pressure << "\n";
 
             double total_energy_density = nucleon_density * mass + calculated_electron_energy_density + lattice_energy_density;
-            double total_pressure = calculated_electron_pressure + lattice_pressure;
-            std::cout << "Total Energy Density: " << total_energy_density << "\n";
-            std::cout << "Total Pressure: " << total_pressure << "\n";
+            total_pressure = calculated_electron_pressure + lattice_pressure;
             
-            double total_mass_density = total_energy_density / (c * c);
+            total_mass_density = total_energy_density / (c * c);
 
             double gibbs_free_energy = (mass_energy / A) + (Z / A) * ((gamma_e * m_electron * c * c) - (m_electron * c * c)) + ((4.0 / 3.0) * ((Z * lattice_energy_density) / (A * electron_density)));
-            std::cout << "Gibbs Free Energy: " << gibbs_free_energy << "\n";
 
             if (gibbs_free_energy < best_composition.gibbs_free_energy && total_pressure > 0 && converged) {
                 // Update best composition
@@ -300,8 +286,6 @@ int main() {
                 best_composition.converged = true;
                 best_composition.relative_error = fabs(relative_error);
                 best_composition.iterations = iterations;
-                
-                std::cout << "    → New minimum Gibbs energy: " << gibbs_free_energy << "\n";
             } 
         }
         // Check if any valid nucleus was found
@@ -314,6 +298,9 @@ int main() {
         }
         // Store results for this density
         equilibrium_results.push_back(best_composition);
+
+        outfile << std::log10(nB) << "," << std::log10(total_mass_density) << "," << std::log10(total_pressure) << "\n";
     }
     print_equilibrium_table(equilibrium_results);
+    outfile.close();
 }
