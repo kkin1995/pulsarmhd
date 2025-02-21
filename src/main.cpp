@@ -154,7 +154,7 @@ int main() {
     std::vector<double> n_B_list;
     double n_B_min = 1.0e22; // Before neutron appearance
     double n_B_max = 1.0e35; // Well into neutron dominance
-    int num_points = 100;    // Higher resolution
+    int num_points = 250;    // Higher resolution
 
     // Logarithmic spacing for smoother transitions
     for (int i = 0; i < num_points; i++) {
@@ -162,7 +162,7 @@ int main() {
         n_B_list.push_back(n_B_i);
     }
 
-    double B_ratio_electron = 1.0;
+    double B_ratio_electron = 100.0;
 
     std::vector<EquilibriumComposition> equilibrium_results;
 
@@ -206,7 +206,8 @@ int main() {
 
             // Solve Coupled Equations
             double x_e = pow(3.0 * pow(M_PI, 2.0) * pow(lambda_e, 3.0) * electron_density, 1.0 / 3.0);
-            double gamma_e_lower = 1.0 + 1e-5;
+
+            double gamma_e_lower = 1.0 + 1e-10;
             double gamma_e_upper = std::max(gamma_e_lower, sqrt(1.0 + x_e * x_e));
 
             double nu_m = 0.0;
@@ -216,13 +217,19 @@ int main() {
             int iterations = 0;
 
             double gamma_e = (gamma_e_lower + gamma_e_upper) / 2.0;
-            while (fabs(gamma_e_upper - gamma_e_lower) > 1.0e-6) {
+
+            double rel_tolerance = 1.0e-6;
+            double abs_tolerance = 1.0e-8;
+
+            while (fabs(gamma_e_upper - gamma_e_lower) > abs_tolerance * gamma_e) {
                 if (iterations > MAX_ITERATIONS) {
                     converged = false;
                     break;
                 }
 
                 iterations++;
+
+                gamma_e = (gamma_e_lower + gamma_e_upper) / 2.0;
 
                 nu_m = floor((pow(gamma_e, 2.0) - 1.0) / (2.0 * B_ratio_electron));
                 nu_m = std::max(nu_m, 0.0);
@@ -244,7 +251,7 @@ int main() {
                 calculated_electron_pressure = (2.0 * B_ratio_electron) / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * (m_electron * (c * c)) * summation_pressure;
                 relative_error = (calculated_electron_density - electron_density) / electron_density;
 
-                if (fabs(relative_error) < 1.0e-6) {
+                if (fabs(relative_error) < rel_tolerance) {
                     converged = true;
                     break;
                 } else {
@@ -253,14 +260,13 @@ int main() {
                     } else {
                         gamma_e_lower = gamma_e;
                     }
-                    gamma_e = (gamma_e_lower + gamma_e_upper) / 2.0;
                 }
             }
 
             double lattice_energy_density = - 1.444 * pow(Z, 2.0 / 3.0) * pow(e_charge, 2.0) * pow(calculated_electron_density, 4.0 / 3.0);
             double lattice_pressure = lattice_energy_density / 3.0;
 
-            double total_energy_density = nucleon_density * mass + calculated_electron_energy_density + lattice_energy_density;
+            double total_energy_density = nucleon_density * mass_energy + calculated_electron_energy_density + lattice_energy_density;
             total_pressure = calculated_electron_pressure + lattice_pressure;
             
             total_mass_density = total_energy_density / (c * c);
