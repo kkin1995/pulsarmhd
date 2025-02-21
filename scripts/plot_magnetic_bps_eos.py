@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import argrelextrema
 
 # Define a function to calculate Gamma using finite differences
 def calculate_gamma_physics(log_P, log_rho):
@@ -20,9 +21,10 @@ def calculate_gamma_physics(log_P, log_rho):
     return gamma
 
 # List of file suffixes corresponding to different magnetic field values
-file_suffixes = ['01', '1', '10', '100']
+file_suffixes = ['001', '01', '1', '10', '100']
 # Create a dictionary mapping file suffix to magnetic field value (for labeling)
 magnetic_fields = {
+    '001': '0.01',
     '01': '0.1',
     '1': '1.0',
     '10': '10.0',
@@ -61,11 +63,11 @@ ax_gamma.set_ylim(0.0, 5.0)
 ax_gamma.grid(True)
 
 # Define a list of colors for plotting
-colors = ['black', 'red', 'blue', 'green']
+colors = ['black', 'red', 'blue', 'green', 'orange']
 
 # Loop over each file suffix
 for idx, suffix in enumerate(file_suffixes):
-    filename = f"magnetic_bps_equation_of_state_{suffix}.csv"
+    filename = f"magnetic_bps_eos_B_{suffix}.csv"
     
     # Load data from the CSV file
     data = pd.read_csv(filename)
@@ -88,7 +90,7 @@ for idx, suffix in enumerate(file_suffixes):
     ax_eos.scatter(log_rho, log_P, s=5, color=colors[idx],
                    label=f"B = {magnetic_fields[suffix]}")
     
-    # Plot Gamma vs. log(ρ) on the Gamma figure
+    # Plot only the upper envelope beyond the first two oscillations
     ax_gamma.scatter(log_rho, Gamma, s=10, color=colors[idx],
                      label=f"B = {magnetic_fields[suffix]}")
 
