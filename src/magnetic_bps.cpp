@@ -1,3 +1,8 @@
+/**
+* Implementation of the magnetic BPS equation of state.
+* Based on: Lai & Shapiro (1991), ApJ, 383, 745
+*/
+
 #include "magnetic_bps.hpp"
 #include <vector>
 #include <cmath>
