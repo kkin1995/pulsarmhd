@@ -2,58 +2,148 @@ import pandas as pd
 import glob
 import os
 import matplotlib.pyplot as plt
+import math
+import re
 
-electron_non_relativistic_dfs = [pd.read_csv(file) for file in glob.glob('/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/gr_compact_objects_cpp/data/electron_non_relativistic*.csv')]
-electron_relativistic_dfs = [pd.read_csv(file) for file in glob.glob('/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/gr_compact_objects_cpp/data/electron_relativistic*.csv')]
-neutron_non_relativistic_dfs = [pd.read_csv(file) for file in glob.glob('/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/gr_compact_objects_cpp/data/neutron_non_relativistic*.csv')]
-neutron_relativistic_dfs = [pd.read_csv(file) for file in glob.glob('/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/gr_compact_objects_cpp/data/neutron_relativistic*.csv')]
+# ------------------------------------------------------------------------
+# 1. Gather CSV files for the hybrid EoS
+# ------------------------------------------------------------------------
+csv_pattern_hybrid = '/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/data/tov_solution_magnetic_bps_bbp_polytrope_*.csv'
+file_list_hybrid = glob.glob(csv_pattern_hybrid)
 
+if not file_list_hybrid:
+    print("No CSV files found for either pattern. Check the file paths/patterns!")
+    exit()
+
+# ------------------------------------------------------------------------
+# 2. Helper functions
+# ------------------------------------------------------------------------
 def get_last_valid_value(df, column):
-    if pd.isna(df[column].iloc[-1]):
-        return df[column].iloc[-2]
-    return df[column].iloc[-1]
+    """
+    Returns the last non-NaN value from the specified column in a DataFrame.
+    """
+    last_idx = df[column].last_valid_index()
+    return df.loc[last_idx, column]
 
-def extract_last_values(dfs):
-    last_values = []
-    for df in dfs:
-        last_mass = get_last_valid_value(df, 'log_m[g]')
-        last_radius = get_last_valid_value(df, 'log_r[cm]')
-        last_values.append((last_mass, last_radius))
-    return last_values
+def parse_central_density_from_filename_hybrid(filename):
+    """
+    Parses the central density (in g/cm^3) from the hybrid EoS CSV filename.
+    Expected pattern:
+      .../tov_solution_magnetic_bps_bbp_polytrope_1.00e+16.csv
+    Returns log10(rho_c) or None if not found.
+    """
+    base = os.path.basename(filename)
+    match = re.search(r'polytrope_(.*)\.csv', base)
+    if not match:
+        return None
+    rho_str = match.group(1)  # e.g. '1.00e+16'
+    try:
+        rho_c = float(rho_str)
+        return math.log10(rho_c)
+    except ValueError:
+        return None
 
-electron_non_relativistic_values = extract_last_values(electron_non_relativistic_dfs)
-electron_relativistic_values = extract_last_values(electron_relativistic_dfs)
-neutron_non_relativistic_values = extract_last_values(neutron_non_relativistic_dfs)
-neutron_relativistic_values = extract_last_values(neutron_relativistic_dfs)
+def parse_central_density_from_filename_rel(filename):
+    """
+    Parses the central density (in g/cm^3) from the neutron relativistic CSV filename.
+    Expected pattern:
+      .../neutron_relativistic_rhoc_5.00pp18.csv
+    which corresponds to 5.00e+18 in standard notation.
+    Returns log10(rho_c) or None if not found.
+    """
+    base = os.path.basename(filename)
+    match = re.search(r'neutron_relativistic_rhoc_(.*)\.csv', base)
+    if not match:
+        return None
+    rho_str = match.group(1)  # e.g. '5.00pp18'
+    # Convert '5.00pp18' -> '5.00e+18'
+    rho_str = rho_str.replace('pp', 'e+')
+    try:
+        rho_c = float(rho_str)
+        return math.log10(rho_c)
+    except ValueError:
+        return None
 
-def plot_mass_radius(values, label, color):
-    masses, radii = zip(*values)
-    masses = [10**mass / 1.989e33 for mass in masses]  # Convert mass from grams to solar masses
-    radii = [10**radius / 1e5 for radius in radii]  # Convert radius from cm to km
-    plt.scatter(radii, masses, label=label, color=color, s = 10)
+def extract_data(file_list, parse_func):
+    """
+    Reads each CSV in file_list, extracts the final (surface) mass and radius,
+    plus parses log10(rho_c) from the filename using parse_func.
+    Returns a list of tuples:
+      [(mass_in_solar_masses, radius_in_km, log10_rho_c), ...]
+    """
+    data = []
+    for filename in file_list:
+        df = pd.read_csv(filename)
+        # Check for required columns
+        if 'log_m[g]' not in df.columns or 'log_r[cm]' not in df.columns:
+            print(f"Skipping file {filename} due to missing columns.")
+            continue
+        
+        # Get last valid log(m) and log(r)
+        last_mass_log = get_last_valid_value(df, 'log_m[g]')
+        last_radius_log = get_last_valid_value(df, 'log_r[cm]')
+        
+        # Convert from log scale to physical units
+        mass_solar = 10**last_mass_log / 1.989e33  # from grams to M_sun
+        radius_km  = 10**last_radius_log / 1e5     # from cm to km
+        
+        # Parse log10(rho_c)
+        log_rho_c = parse_func(filename)
+        if log_rho_c is None:
+            print(f"Could not parse central density from filename: {filename}")
+            continue
+        
+        data.append((mass_solar, radius_km, log_rho_c))
+    return data
 
+# ------------------------------------------------------------------------
+# 3. Extract data for both sets
+# ------------------------------------------------------------------------
+data_hybrid = extract_data(file_list_hybrid, parse_central_density_from_filename_hybrid)
+
+# Separate out each quantity for the hybrid EoS
+masses_hybrid = [row[0] for row in data_hybrid]
+radii_hybrid  = [row[1] for row in data_hybrid]
+log_rho_cs_hybrid = [row[2] for row in data_hybrid]
+
+if not (masses_hybrid):
+    print("No valid data found in the CSV files.")
+    exit()
+
+os.makedirs("plots", exist_ok=True)
+
+# ------------------------------------------------------------------------
+# 4. Plot 1: Mass vs. Radius
+# ------------------------------------------------------------------------
 plt.figure(figsize=(10, 6))
+
+# Hybrid EoS
+if masses_hybrid:
+    plt.scatter(radii_hybrid, masses_hybrid, label='Hybrid EOS', color='blue', s=10)
 
 plt.xlabel('Radius (km)')
 plt.ylabel('Mass (Solar Masses)')
-plot_mass_radius(electron_non_relativistic_values, 'Electron Non-Relativistic', 'blue')
-plot_mass_radius(electron_relativistic_values, 'Electron Relativistic', 'red')
-plt.ylim(-1, 2)
-plt.legend()
 plt.title('Mass-Radius Relations')
 plt.grid(True)
-plt.savefig(os.path.join("plots", "electron_gas_mass_radius.jpg"))
+plt.legend()
+
+plt.savefig(os.path.join("plots", "mass_radius.jpg"))
 plt.clf()
 
+# ------------------------------------------------------------------------
+# 5. Plot 2: Mass vs. log10(rho_c)
+# ------------------------------------------------------------------------
 plt.figure(figsize=(10, 6))
 
-plt.xlabel('Radius (km)')
+# Hybrid EoS
+if masses_hybrid:
+    plt.scatter(log_rho_cs_hybrid, masses_hybrid, label='Hybrid EOS', color='red', s=10)
+
+plt.xlabel('log10(rho_c) [g/cm^3]')
 plt.ylabel('Mass (Solar Masses)')
-plot_mass_radius(neutron_non_relativistic_values, 'Neutron Non-Relativistic', 'green')
-plot_mass_radius(neutron_relativistic_values, 'Neutron Relativistic', 'purple')
-plt.ylim(-1, 7)
-plt.legend()
-plt.title('Mass-Radius Relations')
+plt.title('Mass vs. log10(Central Density)')
 plt.grid(True)
-plt.savefig(os.path.join("plots", "neutron_gas_mass_radius.jpg"))
+plt.legend()
+
+plt.savefig(os.path.join("plots", "mass_vs_logrho_c.jpg"))
 plt.clf()

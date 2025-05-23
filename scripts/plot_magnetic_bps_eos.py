@@ -94,6 +94,34 @@ for idx, suffix in enumerate(file_suffixes):
     ax_gamma.scatter(log_rho, Gamma, s=10, color=colors[idx],
                      label=f"B = {magnetic_fields[suffix]}")
 
+
+# Load nonmagnetic BPS EOS data from CSV (format: rho,P,nB,Z,A,Gamma)
+nonmagnetic_file = "/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/data/bps.csv"
+data_nonmag = pd.read_csv(nonmagnetic_file)
+
+# Extract columns from nonmagnetic data
+rho_nonmag = data_nonmag['rho'].values
+P_nonmag = data_nonmag['P'].values
+Gamma_nonmag = data_nonmag['Gamma'].values
+
+# Compute logarithms for EOS plotting
+log_rho_nonmag = np.log10(rho_nonmag)
+log_P_nonmag = np.log10(P_nonmag)
+
+# Optionally, filter out non-positive values (if necessary)
+mask_nonmag = (rho_nonmag > 0.0) & (P_nonmag > 0.0)
+log_rho_nonmag = log_rho_nonmag[mask_nonmag]
+log_P_nonmag = log_P_nonmag[mask_nonmag]
+Gamma_nonmag = Gamma_nonmag[mask_nonmag]
+
+# Plot nonmagnetic EOS on the EOS figure with a distinct marker/color
+ax_eos.scatter(log_rho_nonmag, log_P_nonmag, s=15, color='magenta', marker='x',
+               label="Nonmagnetic BPS")
+
+# Plot nonmagnetic Gamma on the Gamma figure
+ax_gamma.scatter(log_rho_nonmag, Gamma_nonmag, s=15, color='magenta', marker='x',
+                 label="Nonmagnetic BPS")
+
 # Add legends to both plots
 ax_eos.legend()
 ax_gamma.legend()
