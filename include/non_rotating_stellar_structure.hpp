@@ -28,7 +28,7 @@
  * @li c: Speed of light in CGS units
  *
  * @section enums Enumerations
- * @li DegenerateGasType: Enum representing the type of degenerate gas
+ * @li PolytropicGasType: Enum representing the type of polytropic gas (from polytropic_eos.hpp)
  *
  * @section functions Functions
  * @li newtonian: Computes derivatives for Newtonian hydrostatic equilibrium
@@ -40,7 +40,7 @@
  * @code{.cpp}
  * std::string eos_name;
  * double k, gamma;
- * set_eos_parameters(ELECTRON_RELATIVISTIC, eos_name, k, gamma);
+ * auto eos_data = calculator.getEOSParameters(PolytropicGasType::ELECTRON_RELATIVISTIC);
  * 
  * std::vector<double> state = {log_m, log_p};
  * std::vector<double> derivatives = tolman_oppenheimer_volkoff_derivatives(log_r, state, k, gamma);
@@ -52,6 +52,7 @@
 
 #include <string>
 #include <vector>
+#include "polytropic_eos.hpp"
 
 // Physical Constants in CGS
 
@@ -66,38 +67,18 @@ const double G = 6.67430e-8; // gravitational constant in CGS
 const double c = 2.99792458e10;  // speed of light in CGS units
 
 /**
- * @brief Types of degenerate gases used in stellar structure simulations.
+ * @brief Polytropic EOS types are now handled by the PolytropicEOS class.
  * 
- * This enumeration defines different types of degenerate gases that can be used
- * in stellar structure calculations. The distinction between relativistic and
- * non-relativistic cases affects the equation of state and subsequent stellar
- * structure calculations.
+ * The stellar structure solver now uses the centralized polytropic EOS calculator
+ * from polytropic_eos.hpp, which provides the same gas types with enhanced
+ * functionality and consistency across the codebase.
  *
- * @var DegenerateGasType::ELECTRON_NON_RELATIVISTIC
- * Non-relativistic electron gas. Used for white dwarfs where electron velocities
- * are much smaller than the speed of light (v << c).
- *
- * @var DegenerateGasType::ELECTRON_RELATIVISTIC
- * Relativistic electron gas. Applicable for more massive white dwarfs where
- * electron velocities approach the speed of light.
- *
- * @var DegenerateGasType::NEUTRON_NON_RELATIVISTIC
- * Non-relativistic neutron gas. Used in low-density regions of neutron stars
- * where neutron velocities are much smaller than the speed of light.
- *
- * @var DegenerateGasType::NEUTRON_RELATIVISTIC
- * Relativistic neutron gas. Applicable for high-density regions in neutron stars
- * where neutron velocities approach the speed of light.
+ * @see PolytropicGasType in polytropic_eos.hpp for available EOS types
+ * @see PolytropicEOS class for EOS parameter calculation
  */
-enum DegenerateGasType {
-    ELECTRON_NON_RELATIVISTIC,  ///< Non-relativistic electron degenerate gas
-    ELECTRON_RELATIVISTIC,      ///< Relativistic electron degenerate gas
-    NEUTRON_NON_RELATIVISTIC,   ///< Non-relativistic neutron degenerate gas
-    NEUTRON_RELATIVISTIC        ///< Relativistic neutron degenerate gas
-};
 // Function declarations
 
-std::tuple<int, double> non_rotating_stellar_structure(std::string name, double rho_c, double r_start, double r_end, double dlogr, double k, double gamma);
+std::tuple<int, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e = 2.0);
 
 /**
  * @brief Computes the mass and pressure derivatives using the Newtonian equations of stellar structure.
@@ -231,53 +212,15 @@ std::vector<double> newtonian(double log_r, const std::vector<double>& state, do
 std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r, const std::vector<double>& state, double k, double gamma);
 
 /**
- * @brief Sets the parameters for the equation of state (EOS) based on the type of degenerate gas.
- *
- * This function assigns values to the EOS parameters \p k and \p gamma, as well as a descriptive name 
- * for the EOS, based on the selected type of degenerate gas. The parameters describe the relationship 
- * between pressure and density for the gas: \f$ P = k \rho^\gamma \f$.
- *
- * ### Supported Gas Types:
- * - \p ELECTRON_NON_RELATIVISTIC: Non-relativistic electron gas.
- * - \p ELECTRON_RELATIVISTIC: Relativistic electron gas.
- * - \p NEUTRON_NON_RELATIVISTIC: Non-relativistic neutron gas.
- * - \p NEUTRON_RELATIVISTIC: Relativistic neutron gas.
- *
- * ### Parameters:
- * @param[in] type Enum representing the type of degenerate gas.
- *                 - \p ELECTRON_NON_RELATIVISTIC
- *                 - \p ELECTRON_RELATIVISTIC
- *                 - \p NEUTRON_NON_RELATIVISTIC
- *                 - \p NEUTRON_RELATIVISTIC
- * @param[out] name A reference to a string where the EOS name will be stored. 
- *                  Example values include "electron_non_relativistic" and "neutron_relativistic".
- * @param[out] k A reference to the EOS proportionality constant (\f$k\f$) describing the relationship 
- *               between pressure and density.
- * @param[out] gamma A reference to the polytropic index (\f$\gamma\f$) defining the EOS power-law relationship.
- *
- * ### Constants:
- * - \p mu_e = 2.0: Mean molecular weight per electron, assumed constant.
- *
- * ### Example Usage:
- * @code
- * std::string eos_name;
- * double k, gamma;
- * DegenerateGasType type = NEUTRON_RELATIVISTIC;
+ * @brief EOS parameters are now handled by the PolytropicEOS class.
  * 
- * set_eos_parameters(type, eos_name, k, gamma);
- * 
- * std::cout << "EOS Name: " << eos_name << std::endl;
- * std::cout << "k: " << k << std::endl;
- * std::cout << "gamma: " << gamma << std::endl;
- * @endcode
+ * The set_eos_parameters() function has been removed in favor of the 
+ * centralized PolytropicEOS calculator. EOS parameters are now obtained
+ * automatically within the non_rotating_stellar_structure() function.
  *
- * ### Notes:
- * - The EOS constants for each gas type are pre-defined based on standard physical models.
- * - The parameter \p mu_e is used only for electron gases.
- *
- * @see DegenerateGasType for available gas types.
+ * @see PolytropicEOS::getEOSParameters() for the new EOS parameter interface
+ * @see non_rotating_stellar_structure() for updated function signature
  */
-void set_eos_parameters(DegenerateGasType type, std::string &name, double &k, double &gamma);
 
 /**
  * @brief Generates a descriptive filename for output data based on the EOS name and central density.
