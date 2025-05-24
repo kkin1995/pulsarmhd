@@ -1,8 +1,12 @@
 #include "eos_calculator.hpp"
 #include "magnetic_bps.hpp"
 #include "non_magnetic_ideal_npe_gas.hpp"
+#include "polytropic_eos.hpp"
 #include <stdexcept>
 #include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <cmath>
 
 // Magnetic BPS EOS Calculator
 class MagneticBPSCalculator : public EOSCalculator {
@@ -49,6 +53,94 @@ public:
     std::string getType() const override { return "Non-magnetic NPE Gas"; }
 };
 
+// Polytropic EOS Calculator
+class PolytropicEOSCalculator : public EOSCalculator {
+private:
+    PolytropicGasType gas_type;
+    std::string type_name;
+    
+public:
+    PolytropicEOSCalculator(PolytropicGasType type, const std::string& name) 
+        : gas_type(type), type_name(name) {}
+    
+    bool calculateEOS(const EOSParameters& params) override {
+        try {
+            PolytropicEOS calculator;
+            
+            // Get EOS parameters for the specific gas type
+            auto eos_data = calculator.getEOSParameters(gas_type);
+            
+            // Validate density range
+            if (params.rho_min >= params.rho_max) {
+                std::cerr << "Error: rho_min must be less than rho_max for polytropic EOS." << std::endl;
+                return false;
+            }
+            
+            // Open output file
+            std::ofstream outfile(params.output_file);
+            if (!outfile.is_open()) {
+                std::cerr << "Error opening output file: " << params.output_file << std::endl;
+                return false;
+            }
+            
+            // Write header
+            outfile << "# Polytropic EOS: " << eos_data.name << std::endl;
+            outfile << "# k = " << std::scientific << std::setprecision(6) << eos_data.k 
+                   << ", gamma = " << eos_data.gamma << std::endl;
+            outfile << "# mu_e = " << params.mu_e << std::endl;
+            outfile << "rho[g/cm^3],P[dyne/cm^2],h[erg/g],u[erg/cm^3]" << std::endl;
+            
+            // Calculate EOS over density range
+            double log_rho_min = std::log10(params.rho_min);
+            double log_rho_max = std::log10(params.rho_max);
+            double dlog_rho = (log_rho_max - log_rho_min) / (params.num_points - 1);
+            
+            for (int i = 0; i < params.num_points; i++) {
+                double log_rho = log_rho_min + i * dlog_rho;
+                double rho = std::pow(10.0, log_rho);
+                
+                // Use the custom mu_e if different from default
+                double k_adjusted = eos_data.k;
+                if (std::abs(params.mu_e - 2.0) > 1e-10) {
+                    // Adjust k for custom mu_e
+                    if (gas_type == PolytropicGasType::ELECTRON_NON_RELATIVISTIC) {
+                        k_adjusted = 1.0036e13 / std::pow(params.mu_e, 5.0/3.0);
+                    } else if (gas_type == PolytropicGasType::ELECTRON_RELATIVISTIC) {
+                        k_adjusted = 1.2435e15 / std::pow(params.mu_e, 4.0/3.0);
+                    }
+                }
+                
+                // Calculate pressure using P = k * rho^gamma
+                double pressure = k_adjusted * std::pow(rho, eos_data.gamma);
+                
+                // Calculate specific enthalpy h = (gamma * P) / ((gamma - 1) * rho)
+                double specific_enthalpy = (eos_data.gamma * pressure) / ((eos_data.gamma - 1.0) * rho);
+                
+                // Calculate energy density u = P / (gamma - 1)
+                double energy_density = pressure / (eos_data.gamma - 1.0);
+                
+                // Write to file
+                outfile << std::scientific << std::setprecision(10)
+                       << rho << ","
+                       << pressure << ","
+                       << specific_enthalpy << ","
+                       << energy_density << std::endl;
+            }
+            
+            outfile.close();
+            return true;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Error in Polytropic EOS calculation: " << e.what() << std::endl;
+            return false;
+        }
+    }
+    
+    std::string getType() const override { 
+        return "Polytropic EOS (" + type_name + ")"; 
+    }
+};
+
 // Factory implementation
 std::unique_ptr<EOSCalculator> EOSCalculatorFactory::createCalculator(EOSType type) {
     switch (type) {
@@ -56,6 +148,22 @@ std::unique_ptr<EOSCalculator> EOSCalculatorFactory::createCalculator(EOSType ty
             return std::make_unique<MagneticBPSCalculator>();
         case EOSType::NON_MAGNETIC_NPE_GAS:
             return std::make_unique<NonMagneticNPECalculator>();
+        case EOSType::POLYTROPIC_ELECTRON_NON_REL:
+            return std::make_unique<PolytropicEOSCalculator>(
+                PolytropicGasType::ELECTRON_NON_RELATIVISTIC, 
+                "Non-relativistic Electron Gas");
+        case EOSType::POLYTROPIC_ELECTRON_REL:
+            return std::make_unique<PolytropicEOSCalculator>(
+                PolytropicGasType::ELECTRON_RELATIVISTIC, 
+                "Relativistic Electron Gas");
+        case EOSType::POLYTROPIC_NEUTRON_NON_REL:
+            return std::make_unique<PolytropicEOSCalculator>(
+                PolytropicGasType::NEUTRON_NON_RELATIVISTIC, 
+                "Non-relativistic Neutron Gas");
+        case EOSType::POLYTROPIC_NEUTRON_REL:
+            return std::make_unique<PolytropicEOSCalculator>(
+                PolytropicGasType::NEUTRON_RELATIVISTIC, 
+                "Relativistic Neutron Gas");
         case EOSType::CUSTOM_EOS:
             throw std::runtime_error("Custom EOS not implemented yet");
         default:
@@ -70,6 +178,18 @@ bool calculateEOS(const std::string& eos_type, const EOSParameters& params) {
         std::cerr << "Error: nB_min must be less than nB_max." << std::endl;
         return false;
     }
+    
+    // Additional validation for polytropic EOS
+    if (eos_type.find("POLYTROPIC") != std::string::npos) {
+        if (params.rho_min >= params.rho_max) {
+            std::cerr << "Error: rho_min must be less than rho_max for polytropic EOS." << std::endl;
+            return false;
+        }
+        if (params.mu_e <= 0.0) {
+            std::cerr << "Error: mu_e must be positive for polytropic EOS." << std::endl;
+            return false;
+        }
+    }
 
     try {
         // Parse EOS type
@@ -78,8 +198,19 @@ bool calculateEOS(const std::string& eos_type, const EOSParameters& params) {
             type = EOSType::MAGNETIC_BPS;
         } else if (eos_type == "NON_MAGNETIC_NPE_GAS") {
             type = EOSType::NON_MAGNETIC_NPE_GAS;
+        } else if (eos_type == "POLYTROPIC_ELECTRON_NON_REL") {
+            type = EOSType::POLYTROPIC_ELECTRON_NON_REL;
+        } else if (eos_type == "POLYTROPIC_ELECTRON_REL") {
+            type = EOSType::POLYTROPIC_ELECTRON_REL;
+        } else if (eos_type == "POLYTROPIC_NEUTRON_NON_REL") {
+            type = EOSType::POLYTROPIC_NEUTRON_NON_REL;
+        } else if (eos_type == "POLYTROPIC_NEUTRON_REL") {
+            type = EOSType::POLYTROPIC_NEUTRON_REL;
         } else {
             std::cerr << "Unknown EOS type: " << eos_type << std::endl;
+            std::cerr << "Supported types: MAGNETIC_BPS, NON_MAGNETIC_NPE_GAS, " << std::endl;
+            std::cerr << "                 POLYTROPIC_ELECTRON_NON_REL, POLYTROPIC_ELECTRON_REL," << std::endl;
+            std::cerr << "                 POLYTROPIC_NEUTRON_NON_REL, POLYTROPIC_NEUTRON_REL" << std::endl;
             return false;
         }
 
@@ -89,9 +220,18 @@ bool calculateEOS(const std::string& eos_type, const EOSParameters& params) {
         // Calculate EOS
         std::cout << "Calculating " << calculator->getType() << " EOS..." << std::endl;
         std::cout << "Parameters:" << std::endl;
-        std::cout << "  nB range: " << params.nB_min << " to " << params.nB_max << std::endl;
-        std::cout << "  Number of points: " << params.num_points << std::endl;
+        
+        if (eos_type.find("POLYTROPIC") != std::string::npos) {
+            std::cout << "  Density range: " << params.rho_min << " to " << params.rho_max << " g/cm^3" << std::endl;
+            std::cout << "  Number of points: " << params.num_points << std::endl;
+            std::cout << "  Mean molecular weight per electron: " << params.mu_e << std::endl;
+        } else {
+            std::cout << "  nB range: " << params.nB_min << " to " << params.nB_max << std::endl;
+            std::cout << "  Number of points: " << params.num_points << std::endl;
+        }
+        
         std::cout << "  Output file: " << params.output_file << std::endl;
+        
         if (type == EOSType::MAGNETIC_BPS) {
             std::cout << "  B ratio: " << params.B_ratio_electron << std::endl;
         }

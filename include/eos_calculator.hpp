@@ -84,6 +84,7 @@
 // Forward declarations
 class MagneticBPSEOS;
 class NonMagneticNPEGas;
+class PolytropicEOS;
 
 /**
  * @brief Enumeration of supported EOS types
@@ -91,6 +92,10 @@ class NonMagneticNPEGas;
 enum class EOSType {
     MAGNETIC_BPS,           ///< Magnetic Baym-Pethick-Sutherland EOS
     NON_MAGNETIC_NPE_GAS,   ///< Non-magnetic Neutron-Proton-Electron Gas EOS
+    POLYTROPIC_ELECTRON_NON_REL,  ///< Non-relativistic electron polytropic EOS
+    POLYTROPIC_ELECTRON_REL,      ///< Relativistic electron polytropic EOS
+    POLYTROPIC_NEUTRON_NON_REL,   ///< Non-relativistic neutron polytropic EOS
+    POLYTROPIC_NEUTRON_REL,       ///< Relativistic neutron polytropic EOS
     CUSTOM_EOS             ///< (Future) Custom EOS implementation
 };
 
@@ -116,6 +121,11 @@ struct EOSParameters {
     // Non-magnetic NPE gas specific parameters
     bool debug_mode;               ///< Enable debug output
     
+    // Polytropic EOS specific parameters
+    double rho_min;                ///< Minimum density for polytropic EOS (g/cm^3)
+    double rho_max;                ///< Maximum density for polytropic EOS (g/cm^3)
+    double mu_e;                   ///< Mean molecular weight per electron
+    
     /**
      * @brief Constructor with default values
      * 
@@ -137,7 +147,10 @@ struct EOSParameters {
         B_ratio_electron(0.01),
         rel_tolerance(1e-6),
         abs_tolerance(1e-8),
-        debug_mode(false) {}
+        debug_mode(false),
+        rho_min(1e6),
+        rho_max(1e15),
+        mu_e(2.0) {}
 };
 
 /**
