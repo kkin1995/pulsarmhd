@@ -20,7 +20,7 @@ HEADERS := $(wildcard $(INC_DIR)/*.hpp)
 
 # Object files
 OBJS := $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
-MAIN_OBJS := $(filter-out $(OBJ_DIR)/main.o, $(OBJS))
+MAIN_OBJS := $(filter-out $(OBJ_DIR)/main.o $(OBJ_DIR)/main_%.o, $(OBJS))
 TEST_OBJS := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/test_%.o)
 DEPS := $(OBJS:$(OBJ_DIR)/%.o=$(DEP_DIR)/%.d)
 TEST_DEPS := $(TEST_OBJS:$(OBJ_DIR)/%.o=$(DEP_DIR)/%.d)
