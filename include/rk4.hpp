@@ -9,7 +9,7 @@
  * @file rk4.hpp
  * @brief Header file for the 4th-order Runge-Kutta (RK4) numerical integration method.
  * @author Karan Kinariwala
- * @date 2025-01-09
+ * @date 2025-05-25
  *
  * @details
  * This file implements the classical 4th-order Runge-Kutta method for solving 

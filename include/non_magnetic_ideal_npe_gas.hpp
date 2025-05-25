@@ -6,7 +6,7 @@
  * @file non_magnetic_ideal_npe_gas.hpp
  * @brief Implementation of equation of state calculations for non-magnetic neutron-proton-electron gas
  * @author Karan Kinariwala
- * @date 2025-01-22
+ * @date 2025-05-25
  * 
  * @details This file contains the implementation of a non-magnetic neutron-proton-electron (NPE) 
  * gas equation of state calculator, particularly relevant for neutron star physics. The implementation 

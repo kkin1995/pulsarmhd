@@ -6,7 +6,7 @@
  * @brief Implementation of the magnetic BPS (Baym-Pethick-Sutherland) equation of state
  *        for strongly magnetized neutron star crusts.
  * @author Karan Amit Kinariwala
- * @date 2025-02-22
+ * @date 2025-05-25
  *
  * This class implements the BPS equation of state modified for strong magnetic fields,
  * considering the effects of Landau quantization on electrons. The implementation

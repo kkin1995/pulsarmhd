@@ -6,7 +6,7 @@
  * @file non_rotating_stellar_structure.hpp
  * @brief Header file for non-rotating stellar structure simulations.
  * @author Karan Kinariwala
- * @date 2025-01-09
+ * @date 2025-05-25
  *
  * @details
  * This file defines constants, enumerations, and function declarations used for 
