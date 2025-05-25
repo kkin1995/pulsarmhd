@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+import sys
 
 
 # ============================================================================
@@ -388,49 +389,484 @@ def setup_logging(level: str = "INFO") -> None:
 
 
 # ============================================================================
-# MAIN ENTRY POINT (PLACEHOLDER)
+# STELLAR PLOTTER ENGINE
+# ============================================================================
+
+class StellarPlotter:
+    """Handles all plotting functionality with configurable styles."""
+    
+    def __init__(self, config: PlotConfig):
+        """
+        Initialize the stellar plotter.
+        
+        Args:
+            config: Plot configuration containing styles and settings
+        """
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        
+        # Set matplotlib defaults
+        plt.rcParams['figure.figsize'] = self.config.style.figure_size
+        plt.rcParams['figure.dpi'] = self.config.style.dpi
+        plt.rcParams['font.size'] = 12
+        plt.rcParams['axes.grid'] = self.config.style.grid
+    
+    def plot_single_profile(self, model: StellarModel, output_file: Optional[str] = None) -> str:
+        """
+        Create mass and pressure profile plot for a single stellar model.
+        
+        Equivalent to the original plot_m_r_tov.py functionality.
+        
+        Args:
+            model: StellarModel with profile data loaded
+            output_file: Optional custom output filename
+            
+        Returns:
+            Path to saved plot file
+        """
+        if model.log_r is None or model.log_m is None or model.log_p is None:
+            raise ValueError("Model must have profile data loaded for single profile plot")
+        
+        # Convert from logarithmic to linear scale
+        r_cm = 10 ** model.log_r
+        m_g = 10 ** model.log_m
+        p = 10 ** model.log_p
+        
+        # Unit conversions
+        r_km = r_cm / 1e5  # cm to km
+        M_sun = 1.989e33   # Solar mass in g
+        m_solar = m_g / M_sun  # Mass in solar masses
+        
+        # Create figure with dual y-axes
+        fig, ax1 = plt.subplots(figsize=self.config.style.figure_size)
+        ax2 = ax1.twinx()
+        
+        # Plot mass on primary (left) y-axis
+        color_mass = 'red'
+        ax1.plot(r_km, m_solar, color=color_mass, linestyle=self.config.style.line_styles['mass'], 
+                label='Mass Profile', linewidth=2)
+        ax1.set_xlabel("Radius [km]")
+        ax1.set_ylabel("Mass [M_sun]", color=color_mass)
+        ax1.tick_params(axis='y', colors=color_mass)
+        
+        # Plot pressure on secondary (right) y-axis
+        color_pressure = 'blue'
+        ax2.plot(r_km, p, color=color_pressure, linestyle=self.config.style.line_styles['pressure'],
+                label='Pressure Profile', linewidth=2)
+        ax2.set_ylabel("Pressure [dyne/cm^2]", color=color_pressure)
+        ax2.tick_params(axis='y', colors=color_pressure)
+        
+        # Add title and grid
+        plt.title(f"Mass and Pressure Profiles - {model.eos_type.replace('_', ' ').title()}")
+        if self.config.style.grid:
+            ax1.grid(True, alpha=0.3)
+        
+        # Create combined legend
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_2, labels_2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=self.config.style.legend_location)
+        
+        plt.tight_layout()
+        
+        # Generate output filename
+        if output_file is None:
+            density_str = f"{model.central_density:.2e}".replace('+', 'p').replace('e', 'p')
+            output_file = f"profile_{model.eos_type}_rhoc_{density_str}.png"
+        
+        output_path = os.path.join(self.config.output_directory, output_file)
+        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
+        plt.close()
+        
+        self.logger.info(f"Saved single profile plot: {output_path}")
+        return output_path
+    
+    def plot_mass_radius_relation(self, datasets: List[EOSDataset], 
+                                 output_file: str = "mass_radius_relation.png") -> str:
+        """
+        Create mass-radius relation plot for multiple EOS datasets.
+        
+        Equivalent to functionality from plot_mass_radius_relations.py and 
+        plot_mass_radius_relations_overplot.py.
+        
+        Args:
+            datasets: List of EOSDataset objects to plot
+            output_file: Output filename
+            
+        Returns:
+            Path to saved plot file
+        """
+        plt.figure(figsize=self.config.style.figure_size)
+        
+        for dataset in datasets:
+            if not dataset.models:
+                self.logger.warning(f"No models in dataset {dataset.eos_type}")
+                continue
+            
+            color = self.config.style.colors.get(dataset.eos_type, 'black')
+            marker = self.config.style.markers.get(dataset.eos_type, 'o')
+            label = dataset.eos_type.replace('_', ' ').title()
+            
+            plt.scatter(dataset.radii, dataset.masses, 
+                       color=color, marker=marker, s=30, alpha=0.7, label=label)
+        
+        plt.xlabel('Radius (km)')
+        plt.ylabel('Mass (Solar Masses)')
+        plt.title('Mass-Radius Relations')
+        
+        if self.config.style.grid:
+            plt.grid(True, alpha=0.3)
+        
+        plt.legend(loc=self.config.style.legend_location)
+        plt.tight_layout()
+        
+        output_path = os.path.join(self.config.output_directory, output_file)
+        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
+        plt.close()
+        
+        self.logger.info(f"Saved mass-radius relation plot: {output_path}")
+        return output_path
+    
+    def plot_mass_density_relation(self, datasets: List[EOSDataset],
+                                  output_file: str = "mass_density_relation.png") -> str:
+        """
+        Create mass vs central density plot for multiple EOS datasets.
+        
+        Args:
+            datasets: List of EOSDataset objects to plot
+            output_file: Output filename
+            
+        Returns:
+            Path to saved plot file
+        """
+        plt.figure(figsize=self.config.style.figure_size)
+        
+        for dataset in datasets:
+            if not dataset.models:
+                self.logger.warning(f"No models in dataset {dataset.eos_type}")
+                continue
+            
+            color = self.config.style.colors.get(dataset.eos_type, 'black')
+            marker = self.config.style.markers.get(dataset.eos_type, 'o')
+            label = dataset.eos_type.replace('_', ' ').title()
+            
+            plt.scatter(dataset.log_densities, dataset.masses,
+                       color=color, marker=marker, s=30, alpha=0.7, label=label)
+        
+        plt.xlabel('log10(rho_c) [g/cm^3]')
+        plt.ylabel('Mass (Solar Masses)')
+        plt.title('Mass vs. log10(Central Density)')
+        
+        if self.config.style.grid:
+            plt.grid(True, alpha=0.3)
+        
+        plt.legend(loc=self.config.style.legend_location)
+        plt.tight_layout()
+        
+        output_path = os.path.join(self.config.output_directory, output_file)
+        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
+        plt.close()
+        
+        self.logger.info(f"Saved mass-density relation plot: {output_path}")
+        return output_path
+    
+    def plot_comparative_analysis(self, datasets: List[EOSDataset],
+                                 plot_types: List[str] = ["mass_radius", "mass_density"],
+                                 output_prefix: str = "comparative") -> List[str]:
+        """
+        Create comparative plots for multiple EOS types.
+        
+        Args:
+            datasets: List of EOSDataset objects to compare
+            plot_types: Types of plots to create ("mass_radius", "mass_density")
+            output_prefix: Prefix for output filenames
+            
+        Returns:
+            List of paths to saved plot files
+        """
+        output_files = []
+        
+        if "mass_radius" in plot_types:
+            output_file = f"{output_prefix}_mass_radius.png"
+            path = self.plot_mass_radius_relation(datasets, output_file)
+            output_files.append(path)
+        
+        if "mass_density" in plot_types:
+            output_file = f"{output_prefix}_mass_density.png"
+            path = self.plot_mass_density_relation(datasets, output_file)
+            output_files.append(path)
+        
+        return output_files
+    
+    def create_summary_statistics(self, datasets: List[EOSDataset]) -> Dict[str, Dict[str, float]]:
+        """
+        Calculate summary statistics for each EOS dataset.
+        
+        Args:
+            datasets: List of EOSDataset objects
+            
+        Returns:
+            Dictionary with statistics for each EOS type
+        """
+        stats = {}
+        
+        for dataset in datasets:
+            if not dataset.models:
+                continue
+                
+            masses = np.array(dataset.masses)
+            radii = np.array(dataset.radii)
+            densities = np.array(dataset.log_densities)
+            
+            stats[dataset.eos_type] = {
+                'num_models': len(dataset.models),
+                'max_mass': float(np.max(masses)),
+                'min_mass': float(np.min(masses)),
+                'mean_mass': float(np.mean(masses)),
+                'max_radius': float(np.max(radii)),
+                'min_radius': float(np.min(radii)),
+                'mean_radius': float(np.mean(radii)),
+                'density_range_log': float(np.max(densities) - np.min(densities))
+            }
+        
+        return stats
+
+
+# ============================================================================
+# COMMAND LINE INTERFACE
+# ============================================================================
+
+def create_argument_parser() -> argparse.ArgumentParser:
+    """Create command line argument parser."""
+    parser = argparse.ArgumentParser(
+        description="Unified Stellar Structure Plotting System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Plot single stellar profile
+  python stellar_plotter.py profile --file data/hybrid_1e15.csv --eos-type hybrid
+  
+  # Create mass-radius relation for hybrid EOS
+  python stellar_plotter.py mass-radius --eos-types hybrid
+  
+  # Compare multiple EOS types
+  python stellar_plotter.py compare --eos-types hybrid,neutron_relativistic
+  
+  # Generate all plots with custom config
+  python stellar_plotter.py all --config custom_config.yaml
+        """
+    )
+    
+    parser.add_argument('command', choices=['profile', 'mass-radius', 'mass-density', 'compare', 'all'],
+                       help='Type of plot to create')
+    
+    parser.add_argument('--eos-types', type=str, default='hybrid',
+                       help='Comma-separated list of EOS types (default: hybrid)')
+    
+    parser.add_argument('--file', type=str,
+                       help='Specific CSV file for single profile plot')
+    
+    parser.add_argument('--config', type=str, default='stellar_plotter_config.yaml',
+                       help='Configuration file path (default: stellar_plotter_config.yaml)')
+    
+    parser.add_argument('--output-dir', type=str,
+                       help='Output directory (overrides config)')
+    
+    parser.add_argument('--output-prefix', type=str, default='stellar',
+                       help='Output filename prefix (default: stellar)')
+    
+    parser.add_argument('--log-level', type=str, default='INFO',
+                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                       help='Logging level (default: INFO)')
+    
+    parser.add_argument('--stats', action='store_true',
+                       help='Print summary statistics')
+    
+    return parser
+
+
+def execute_plotting_command(args) -> None:
+    """Execute the plotting command based on parsed arguments."""
+    # Setup logging
+    setup_logging(args.log_level)
+    logger = logging.getLogger(__name__)
+    
+    # Load configuration
+    config_manager = ConfigManager(args.config if os.path.exists(args.config) else None)
+    config = config_manager.get_config()
+    
+    # Override output directory if specified
+    if args.output_dir:
+        config.output_directory = args.output_dir
+    
+    # Validate configuration
+    if not config_manager.validate_paths():
+        logger.error("Configuration validation failed")
+        return
+    
+    # Initialize components
+    processor = EOSDataProcessor(config)
+    plotter = StellarPlotter(config)
+    
+    # Parse EOS types
+    eos_types = [eos.strip() for eos in args.eos_types.split(',')]
+    
+    try:
+        if args.command == 'profile':
+            # Single profile plot
+            if not args.file:
+                logger.error("--file argument required for profile command")
+                return
+            
+            if not os.path.exists(args.file):
+                logger.error(f"File not found: {args.file}")
+                return
+            
+            # Determine EOS type from filename or use first specified type
+            eos_type = eos_types[0] if eos_types else 'hybrid'
+            model = processor.load_stellar_model(args.file, eos_type, load_profile=True)
+            
+            if model:
+                output_file = plotter.plot_single_profile(model)
+                logger.info(f"Profile plot saved: {output_file}")
+            else:
+                logger.error("Failed to load stellar model")
+        
+        elif args.command in ['mass-radius', 'mass-density', 'compare']:
+            # Load datasets for specified EOS types
+            datasets = []
+            for eos_type in eos_types:
+                dataset = processor.load_eos_dataset(eos_type, load_profiles=False)
+                if dataset:
+                    datasets.append(dataset)
+                else:
+                    logger.warning(f"No data found for EOS type: {eos_type}")
+            
+            if not datasets:
+                logger.error("No valid datasets loaded")
+                return
+            
+            # Create plots based on command
+            if args.command == 'mass-radius':
+                output_file = f"{args.output_prefix}_mass_radius.png"
+                path = plotter.plot_mass_radius_relation(datasets, output_file)
+                logger.info(f"Mass-radius plot saved: {path}")
+            
+            elif args.command == 'mass-density':
+                output_file = f"{args.output_prefix}_mass_density.png"
+                path = plotter.plot_mass_density_relation(datasets, output_file)
+                logger.info(f"Mass-density plot saved: {path}")
+            
+            elif args.command == 'compare':
+                paths = plotter.plot_comparative_analysis(datasets, 
+                                                        ["mass_radius", "mass_density"],
+                                                        args.output_prefix)
+                for path in paths:
+                    logger.info(f"Comparative plot saved: {path}")
+            
+            # Print statistics if requested
+            if args.stats:
+                stats = plotter.create_summary_statistics(datasets)
+                print("\n" + "="*60)
+                print("SUMMARY STATISTICS")
+                print("="*60)
+                for eos_type, eos_stats in stats.items():
+                    print(f"\n{eos_type.replace('_', ' ').title()}:")
+                    print(f"  Models: {eos_stats['num_models']}")
+                    print(f"  Mass range: {eos_stats['min_mass']:.3f} - {eos_stats['max_mass']:.3f} M☉")
+                    print(f"  Radius range: {eos_stats['min_radius']:.1f} - {eos_stats['max_radius']:.1f} km")
+                    print(f"  Density range: {eos_stats['density_range_log']:.1f} orders of magnitude")
+        
+        elif args.command == 'all':
+            # Generate all plot types
+            datasets = []
+            for eos_type in eos_types:
+                dataset = processor.load_eos_dataset(eos_type, load_profiles=False)
+                if dataset:
+                    datasets.append(dataset)
+            
+            if datasets:
+                # Create all comparative plots
+                paths = plotter.plot_comparative_analysis(datasets, 
+                                                        ["mass_radius", "mass_density"],
+                                                        args.output_prefix)
+                
+                # Print statistics
+                stats = plotter.create_summary_statistics(datasets)
+                print("\n" + "="*60)
+                print("SUMMARY STATISTICS")
+                print("="*60)
+                for eos_type, eos_stats in stats.items():
+                    print(f"\n{eos_type.replace('_', ' ').title()}:")
+                    print(f"  Models: {eos_stats['num_models']}")
+                    print(f"  Mass range: {eos_stats['min_mass']:.3f} - {eos_stats['max_mass']:.3f} M☉")
+                    print(f"  Radius range: {eos_stats['min_radius']:.1f} - {eos_stats['max_radius']:.1f} km")
+                
+                logger.info(f"Generated {len(paths)} plots successfully")
+            else:
+                logger.error("No valid datasets found")
+    
+    except Exception as e:
+        logger.error(f"Error executing command: {e}")
+        raise
+
+
+# ============================================================================
+# MAIN ENTRY POINT
 # ============================================================================
 
 def main():
-    """Main entry point - to be expanded in Sprint 2."""
-    setup_logging()
-    logger = logging.getLogger(__name__)
-    
-    logger.info("Stellar Plotter v1.0 - Sprint 1 Foundation")
-    logger.info("Core architecture initialized successfully")
-    
-    # Test configuration file loading
-    config_file = "stellar_plotter_config.yaml"
-    if os.path.exists(config_file):
-        logger.info(f"Testing configuration file: {config_file}")
-        config_manager = ConfigManager(config_file)
+    """Main entry point with CLI support."""
+    # Check if command line arguments are provided
+    if len(sys.argv) > 1:
+        # Use CLI interface
+        parser = create_argument_parser()
+        args = parser.parse_args()
+        execute_plotting_command(args)
     else:
-        logger.info("Using default configuration (no config file found)")
-        config_manager = ConfigManager()
-    
-    config = config_manager.get_config()
-    
-    if config_manager.validate_paths():
-        logger.info("Configuration validation passed")
+        # Backward compatibility - run Sprint 1 foundation test
+        setup_logging()
+        logger = logging.getLogger(__name__)
         
-        # Test data processor initialization
-        processor = EOSDataProcessor(config)
-        discovered = processor.discover_files(['hybrid', 'neutron_relativistic'])
+        logger.info("Stellar Plotter v2.0 - Sprint 2 Complete")
+        logger.info("No command specified - running foundation test")
         
-        for eos_type, files in discovered.items():
-            logger.info(f"EOS {eos_type}: {len(files)} files discovered")
+        # Test configuration file loading
+        config_file = "stellar_plotter_config.yaml"
+        if os.path.exists(config_file):
+            logger.info(f"Testing configuration file: {config_file}")
+            config_manager = ConfigManager(config_file)
+        else:
+            logger.info("Using default configuration (no config file found)")
+            config_manager = ConfigManager()
+        
+        config = config_manager.get_config()
+        
+        if config_manager.validate_paths():
+            logger.info("Configuration validation passed")
             
-        # Test loading a single model to validate the full pipeline
-        if 'hybrid' in discovered and discovered['hybrid']:
-            logger.info("Testing stellar model loading...")
-            first_file = discovered['hybrid'][0]
-            model = processor.load_stellar_model(first_file, 'hybrid', load_profile=False)
-            if model:
-                logger.info(f"Successfully loaded model: M={model.mass_solar:.3f} M☉, R={model.radius_km:.1f} km, ρc={model.central_density:.2e} g/cm³")
-            else:
-                logger.error("Failed to load test model")
-    else:
-        logger.error("Configuration validation failed")
+            # Test data processor initialization
+            processor = EOSDataProcessor(config)
+            discovered = processor.discover_files(['hybrid', 'neutron_relativistic'])
+            
+            for eos_type, files in discovered.items():
+                logger.info(f"EOS {eos_type}: {len(files)} files discovered")
+                
+            # Test loading a single model to validate the full pipeline
+            if 'hybrid' in discovered and discovered['hybrid']:
+                logger.info("Testing stellar model loading...")
+                first_file = discovered['hybrid'][0]
+                model = processor.load_stellar_model(first_file, 'hybrid', load_profile=False)
+                if model:
+                    logger.info(f"Successfully loaded model: M={model.mass_solar:.3f} M☉, R={model.radius_km:.1f} km, ρc={model.central_density:.2e} g/cm³")
+                else:
+                    logger.error("Failed to load test model")
+            
+            logger.info("\nTo use the plotting functionality, run with commands like:")
+            logger.info("  python stellar_plotter.py mass-radius --eos-types hybrid")
+            logger.info("  python stellar_plotter.py compare --eos-types hybrid,neutron_relativistic")
+            logger.info("  python stellar_plotter.py all --stats")
+        else:
+            logger.error("Configuration validation failed")
 
 
 if __name__ == "__main__":
