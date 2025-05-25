@@ -76,8 +76,110 @@ const double c = 2.99792458e10;  // speed of light in CGS units
  * @see PolytropicGasType in polytropic_eos.hpp for available EOS types
  * @see PolytropicEOS class for EOS parameter calculation
  */
-// Function declarations
 
+/**
+ * @brief Solves the stellar structure equations for non-rotating compact objects.
+ *
+ * @details
+ * This function integrates the Tolman-Oppenheimer-Volkoff (TOV) equations to compute
+ * the mass-radius relationship for non-rotating relativistic stars such as white dwarfs
+ * and neutron stars. The integration proceeds from a small inner radius outward until
+ * the stellar surface is reached (defined by pressure dropping below a threshold).
+ *
+ * **Physical Framework:**
+ * The function solves the TOV equations in logarithmic coordinates:
+ * \f{eqnarray*}{
+ * \frac{d(\log m)}{d(\log r)} &=& \frac{4 \pi r^3 \rho}{m} \\
+ * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right) 
+ *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right) 
+ *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right) 
+ *                                  \cdot \left( 1 - \frac{2 G m}{r c^2} \right)^{-1}
+ * \f}
+ *
+ * **Equation of State:**
+ * Uses polytropic EOS: \f$P = k \rho^\gamma\f$ where k and γ are automatically
+ * determined from the gas type. Supported types include:
+ * - Non-relativistic electron gas (γ = 5/3): White dwarf cores
+ * - Relativistic electron gas (γ = 4/3): Massive white dwarfs  
+ * - Non-relativistic neutron gas (γ = 5/3): Low-density neutron star regions
+ * - Relativistic neutron gas (γ = 4/3): High-density neutron star cores
+ *
+ * **Initial Conditions:**
+ * At the starting radius r_start, the enclosed mass is computed assuming
+ * uniform density: \f$m_0 = \frac{4}{3}\pi r_{start}^3 \rho_c\f$
+ * The initial pressure is: \f$P_0 = k \rho_c^\gamma\f$
+ *
+ * **Integration Method:**
+ * Uses 4th-order Runge-Kutta integration with adaptive step size control.
+ * Integration terminates when:
+ * - Pressure drops below 10⁻⁸ dyne/cm² (surface condition)
+ * - Non-finite values are encountered (numerical instability)
+ * - Maximum radius is reached
+ *
+ * **Output Data:**
+ * Writes CSV file containing log₁₀(r), log₁₀(m), log₁₀(P) at each integration step.
+ * Filename format: "data/[eos_name]_rhoc_[density].csv"
+ *
+ * @param[in] eos_type Type of polytropic gas defining the equation of state
+ * @param[in] rho_c Central density in g/cm³ (typically 10⁶ - 10¹⁸)
+ * @param[in] r_start Starting radius for integration in cm (typically ~10 cm)
+ * @param[in] r_end Maximum radius for integration in cm (typically ~10⁶ cm)
+ * @param[in] dlogr Step size in log₁₀(r) for integration (typically 0.01 - 0.1)
+ * @param[in] mu_e Mean molecular weight per electron for electron gases (default: 2.0)
+ *                 Only affects electron gas types; modifies k parameter as:
+ *                 - Non-rel: k → k/μₑ^(5/3)
+ *                 - Relativistic: k → k/μₑ^(4/3)
+ *
+ * @return std::tuple<int, double> containing:
+ *         - Integration steps completed before reaching surface
+ *         - Final log₁₀(mass) in grams at stellar surface
+ *
+ * @pre rho_c > 0 (positive central density)
+ * @pre r_start > 0 and r_end > r_start (valid radius range)
+ * @pre dlogr > 0 (positive step size)
+ * @pre mu_e > 0 (positive mean molecular weight)
+ *
+ * @post Creates output file in "data/" directory
+ * @post Returns physically meaningful mass for successful integration
+ *
+ * @note For white dwarfs: typical rho_c ~ 10⁶ g/cm³, final mass ~ 0.6 M☉
+ * @note For neutron stars: typical rho_c ~ 10¹⁵ g/cm³, final mass ~ 1.4 M☉
+ * @note Custom μₑ allows modeling different compositions (e.g., He: μₑ=4, C: μₑ=12)
+ *
+ * @warning Requires "data/" directory to exist for output file creation
+ * @warning May fail for extreme densities causing numerical instabilities
+ * @warning Integration may not converge for inappropriate step sizes
+ *
+ * **Example Usage:**
+ * @code{.cpp}
+ * // Calculate white dwarf structure
+ * auto [steps, log_mass] = non_rotating_stellar_structure(
+ *     PolytropicGasType::ELECTRON_NON_RELATIVISTIC,
+ *     1e6,    // Central density: 10⁶ g/cm³
+ *     10.0,   // Start radius: 10 cm  
+ *     1e6,    // End radius: 10⁶ cm
+ *     0.05    // Step size in log(r)
+ * );
+ * 
+ * double mass_grams = std::pow(10.0, log_mass);
+ * double mass_solar = mass_grams / 1.989e33;  // Convert to solar masses
+ * std::cout << "White dwarf mass: " << mass_solar << " M☉" << std::endl;
+ * 
+ * // Calculate neutron star with custom composition
+ * auto [ns_steps, ns_log_mass] = non_rotating_stellar_structure(
+ *     PolytropicGasType::NEUTRON_RELATIVISTIC,
+ *     5e14,   // Central density: 5×10¹⁴ g/cm³
+ *     10.0,   // Start radius: 10 cm
+ *     1e6,    // End radius: 10⁶ cm  
+ *     0.02,   // Smaller step for accuracy
+ *     2.0     // Standard μₑ for neutron matter
+ * );
+ * @endcode
+ *
+ * @see tolman_oppenheimer_volkoff_derivatives() for the TOV equation implementation
+ * @see PolytropicEOS::getEOSParameters() for EOS parameter calculation
+ * @see get_filename() for output file naming convention
+ */
 std::tuple<int, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e = 2.0);
 
 /**
@@ -214,12 +316,37 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r, const s
 /**
  * @brief EOS parameters are now handled by the PolytropicEOS class.
  * 
- * The set_eos_parameters() function has been removed in favor of the 
- * centralized PolytropicEOS calculator. EOS parameters are now obtained
- * automatically within the non_rotating_stellar_structure() function.
+ * **Migration Notice:**
+ * The `set_eos_parameters()` function has been removed and replaced with the 
+ * modular PolytropicEOS system. EOS parameters (k, γ, name) are now obtained
+ * automatically within `non_rotating_stellar_structure()` using:
+ * 
+ * ```cpp
+ * PolytropicEOS eos_calculator;
+ * auto eos_data = eos_calculator.getEOSParameters(eos_type);
+ * double k = eos_data.k;
+ * double gamma = eos_data.gamma;
+ * std::string name = eos_data.name;
+ * ```
+ * 
+ * **Benefits of New Architecture:**
+ * - Centralized EOS parameter management
+ * - Consistent parameter values across the codebase
+ * - Enhanced validation and error checking
+ * - Support for custom mean molecular weights (μₑ)
+ * - Extensible framework for additional EOS types
+ * 
+ * **Parameter Values:**
+ * The PolytropicEOS class provides the same parameter values that were
+ * previously hardcoded:
+ * - Electron non-relativistic: k = 1.0036×10¹³, γ = 5/3
+ * - Electron relativistic: k = 1.2435×10¹⁵, γ = 4/3  
+ * - Neutron non-relativistic: k = 5.3802×10⁹, γ = 5/3
+ * - Neutron relativistic: k = 1.2293×10¹⁵, γ = 4/3
  *
  * @see PolytropicEOS::getEOSParameters() for the new EOS parameter interface
  * @see non_rotating_stellar_structure() for updated function signature
+ * @see PolytropicGasType for available EOS types
  */
 
 /**
@@ -233,45 +360,62 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r, const s
  * data/[eos_name]_rhoc_[formatted_density].csv
  * \f}
  *
- * The central density is formatted with scientific notation, where:
- * - 'e' is replaced with 'p' (e.g., 1e9 → 1p9)
- * - '+' is replaced with 'p' (e.g., 1e+09 → 1p09)
- * - Two decimal places are maintained (e.g., 1.00p9)
+ * **Density Formatting:**
+ * The central density is formatted using scientific notation with specific transformations:
+ * - Uses 2 decimal places precision (e.g., 1.23e+09)
+ * - Replaces '+' with 'p' (e.g., 1.23e+09 → 1.23ep09)  
+ * - Replaces 'e' with 'p' (e.g., 1.23ep09 → 1.23pp09)
+ * - Final result: 1.23pp09
  *
- * @param[in] name EOS identifier string (e.g., "electron_relativistic")
+ * This encoding ensures filesystem-safe filenames while preserving density information.
+ *
+ * @param[in] name EOS identifier string (e.g., "electron_relativistic", "neutron_non_relativistic")
  * @param[in] rho_c Central density in g/cm³
  *
- * @return Formatted filename string following the pattern above
+ * @return Formatted filename string in "data/" directory with ".csv" extension
  *
  * @note The function assumes the existence of a "data/" directory
  * @note No validation is performed on the input parameters
+ * @note The encoding is reversible for data analysis purposes
  *
- * Example with different central densities:
+ * **Example Transformations:**
  * @code{.cpp}
- * // Example 1: Standard notation
- * std::string name1 = "neutron_non_relativistic";
+ * // Example 1: Standard scientific notation
+ * std::string name1 = "neutron_relativistic";
  * double rho_c1 = 1e14;
  * std::string file1 = get_filename(name1, rho_c1);
- * // Result: "data/neutron_non_relativistic_rhoc_1p00p14.csv"
+ * // Input: 1e14 → Scientific: "1.00e+14" → Replace '+': "1.00ep14" → Replace 'e': "1.00pp14"
+ * // Result: "data/neutron_relativistic_rhoc_1.00pp14.csv"
  *
- * // Example 2: Different precision
- * std::string name2 = "electron_relativistic";
+ * // Example 2: Fractional exponent
+ * std::string name2 = "electron_non_relativistic";
  * double rho_c2 = 1.23e9;
  * std::string file2 = get_filename(name2, rho_c2);
- * // Result: "data/electron_relativistic_rhoc_1p23p9.csv"
+ * // Input: 1.23e9 → Scientific: "1.23e+09" → Replace '+': "1.23ep09" → Replace 'e': "1.23pp09"
+ * // Result: "data/electron_non_relativistic_rhoc_1.23pp09.csv"
+ * 
+ * // Example 3: Negative exponent
+ * std::string name3 = "electron_relativistic";
+ * double rho_c3 = 1.5e-3;
+ * std::string file3 = get_filename(name3, rho_c3);
+ * // Input: 1.5e-3 → Scientific: "1.50e-03" → No '+' to replace → Replace 'e': "1.50p-03"
+ * // Result: "data/electron_relativistic_rhoc_1.50p-03.csv"
  * @endcode
  *
- * @par Filename Components
+ * **Filename Components:**
  * \f{description}
  * \item[Prefix] "data/" directory path
- * \item[Name] EOS identifier from input parameter
+ * \item[Name] EOS identifier from PolytropicEOS system
  * \item[Separator] "\_rhoc\_" between name and density
- * \item[Density] Formatted central density value
+ * \item[Density] Encoded scientific notation of central density
  * \item[Extension] ".csv" file extension
  * \f}
  *
  * @warning Directory "data/" must exist before using the generated filename
- * @see set_eos_parameters() for generating valid EOS names
+ * @warning Large density values may create very long filenames
+ * 
+ * @see PolytropicEOS::getEOSParameters() for valid EOS names
+ * @see non_rotating_stellar_structure() for usage context
  */
 std::string get_filename(const std::string& name, double rho_c);
 

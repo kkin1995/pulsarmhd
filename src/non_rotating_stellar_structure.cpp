@@ -10,6 +10,31 @@
 #include <fstream>
 
 std::tuple<int, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e) {
+    /*
+     * STELLAR STRUCTURE INTEGRATION USING TOV EQUATIONS
+     * 
+     * This function solves the Tolman-Oppenheimer-Volkoff (TOV) equations for relativistic
+     * stellar structure in logarithmic coordinates. The approach integrates outward from
+     * a small starting radius until the stellar surface is reached.
+     * 
+     * PHYSICS:
+     * - Uses polytropic EOS: P = k * ρ^γ
+     * - Solves TOV equations with relativistic corrections
+     * - Handles both white dwarf (electron gas) and neutron star (neutron gas) regimes
+     * - Supports both non-relativistic (γ=5/3) and relativistic (γ=4/3) cases
+     * 
+     * NUMERICAL METHOD:
+     * - Logarithmic coordinates: log(r), log(m), log(P)
+     * - 4th-order Runge-Kutta integration with fixed step size
+     * - Surface detection via pressure threshold (P < 10^-8 dyne/cm²)
+     * - Stability checks for finite values at each step
+     * 
+     * INITIAL CONDITIONS:
+     * - Assumes uniform density sphere: m₀ = (4π/3) * r_start³ * ρ_c
+     * - Initial pressure from EOS: P₀ = k * ρ_c^γ
+     * - Custom μₑ support for electron gases (composition effects)
+     */
+    
     // NEW: Get EOS parameters from polytropic calculator
     PolytropicEOS eos_calculator;
     auto eos_data = eos_calculator.getEOSParameters(eos_type);
