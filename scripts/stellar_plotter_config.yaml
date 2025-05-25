@@ -1,0 +1,72 @@
+# Stellar Plotter Configuration File
+# This file defines paths, EOS patterns, and plotting styles for the unified stellar plotter
+
+# Data and output directories
+data_directory: "../data/"
+output_directory: "../plots/"
+
+# Equation of State (EOS) file patterns
+eos_patterns:
+  hybrid: "tov_solution_magnetic_bps_bbp_polytrope_*.csv"
+  neutron_relativistic: "neutron_relativistic_rhoc_*.csv"
+  electron_relativistic: "electron_relativistic_rhoc_*.csv"
+  electron_non_relativistic: "electron_non_relativistic_rhoc_*.csv"
+  neutron_non_relativistic: "neutron_non_relativistic_rhoc_*.csv"
+
+# Plotting style configuration
+plotting:
+  # Figure settings
+  figure_size: [10, 6]
+  dpi: 300
+  grid: true
+  legend_location: "best"
+  
+  # Colors for different EOS types
+  colors:
+    hybrid: "blue"
+    neutron_relativistic: "green"
+    electron_relativistic: "red"
+    electron_non_relativistic: "orange"
+    neutron_non_relativistic: "purple"
+  
+  # Markers for scatter plots
+  markers:
+    hybrid: "o"
+    neutron_relativistic: "s"
+    electron_relativistic: "^"
+    electron_non_relativistic: "v"
+    neutron_non_relativistic: "D"
+  
+  # Line styles for different data types
+  line_styles:
+    mass: "-"
+    pressure: "--"
+    density: ":"
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Physical constants and unit conversions
+constants:
+  solar_mass_g: 1.989e33
+  cm_to_km: 1.0e-5
+  
+# Default plot parameters
+defaults:
+  mass_radius:
+    xlabel: "Radius (km)"
+    ylabel: "Mass (Solar Masses)"
+    title: "Mass-Radius Relations"
+    
+  mass_density:
+    xlabel: "log10(rho_c) [g/cm^3]"
+    ylabel: "Mass (Solar Masses)"
+    title: "Mass vs. log10(Central Density)"
+    
+  single_profile:
+    xlabel: "Radius [km]"
+    ylabel_left: "Mass [M_sun]"
+    ylabel_right: "Pressure [dyne/cm^2]"
+    title: "Mass and Pressure Profiles" 
