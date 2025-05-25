@@ -13,6 +13,35 @@ numpy = "^2.2.1"
 scipy = "^1.15.1"
 pyyaml = "^6.0.2"
 
+[tool.poetry.group.test.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+pytest-benchmark = "^4.0.0"
+pytest-mpl = "^0.16.1"
+pytest-mock = "^3.11.1"
+pytest-xdist = "^3.3.1"
+hypothesis = "^6.82.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=../../scripts",
+    "--cov-report=term-missing",
+    "--cov-report=html:../coverage_html",
+    "--cov-fail-under=20"
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests", 
+    "performance: Performance tests",
+    "visual: Visual regression tests",
+    "slow: Slow running tests"
+]
 
 [build-system]
 requires = ["poetry-core"]
