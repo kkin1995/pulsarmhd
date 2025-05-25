@@ -15,7 +15,7 @@
  * - Relativistic neutron gas (high-density neutron star cores)
  * 
  * @author Karan Amit Kinariwala
- * @date 2025-01-09
+ * @date 2025-05-25
  * 
  * @example Basic Usage
  * ```cpp
