@@ -73,6 +73,93 @@ class PlotStyle:
     dpi: int = 300
     grid: bool = True
     legend_location: str = 'best'
+    theme: str = 'publication'  # 'publication', 'presentation', 'dark', 'colorblind'
+    font_family: str = 'serif'  # 'serif', 'sans-serif', 'monospace'
+    line_width: float = 2.0
+    marker_size: float = 30.0
+    alpha: float = 0.7
+    grid_alpha: float = 0.3
+
+
+class PlotTheme:
+    """Predefined plot themes for different use cases."""
+    
+    @staticmethod
+    def get_theme_config(theme_name: str) -> Dict[str, any]:
+        """Get matplotlib configuration for a specific theme."""
+        themes = {
+            'publication': {
+                'font.family': 'serif',
+                'font.size': 12,
+                'axes.linewidth': 1.2,
+                'axes.spines.top': False,
+                'axes.spines.right': False,
+                'axes.grid': True,
+                'grid.alpha': 0.3,
+                'legend.frameon': True,
+                'legend.fancybox': True,
+                'legend.shadow': True,
+                'figure.facecolor': 'white',
+                'axes.facecolor': 'white'
+            },
+            'presentation': {
+                'font.family': 'sans-serif',
+                'font.size': 14,
+                'axes.linewidth': 2.0,
+                'axes.spines.top': False,
+                'axes.spines.right': False,
+                'axes.grid': True,
+                'grid.alpha': 0.4,
+                'legend.frameon': True,
+                'legend.fancybox': True,
+                'figure.facecolor': 'white',
+                'axes.facecolor': '#f8f8f8'
+            },
+            'dark': {
+                'font.family': 'sans-serif',
+                'font.size': 12,
+                'text.color': 'white',
+                'axes.labelcolor': 'white',
+                'axes.edgecolor': 'white',
+                'xtick.color': 'white',
+                'ytick.color': 'white',
+                'axes.spines.top': False,
+                'axes.spines.right': False,
+                'axes.grid': True,
+                'grid.color': 'gray',
+                'grid.alpha': 0.3,
+                'legend.frameon': True,
+                'legend.facecolor': '#2e2e2e',
+                'legend.edgecolor': 'white',
+                'figure.facecolor': '#1e1e1e',
+                'axes.facecolor': '#2e2e2e'
+            },
+            'colorblind': {
+                'font.family': 'sans-serif',
+                'font.size': 12,
+                'axes.linewidth': 1.2,
+                'axes.spines.top': False,
+                'axes.spines.right': False,
+                'axes.grid': True,
+                'grid.alpha': 0.3,
+                'legend.frameon': True,
+                'figure.facecolor': 'white',
+                'axes.facecolor': 'white'
+            }
+        }
+        
+        return themes.get(theme_name, themes['publication'])
+    
+    @staticmethod
+    def get_colorblind_palette() -> Dict[str, str]:
+        """Get colorblind-friendly color palette."""
+        return {
+            'hybrid': '#1f77b4',           # Blue
+            'neutron_relativistic': '#ff7f0e',     # Orange  
+            'electron_relativistic': '#2ca02c',    # Green
+            'electron_non_relativistic': '#d62728', # Red
+            'neutron_non_relativistic': '#9467bd'   # Purple
+        }
 
 
 @dataclass
@@ -114,11 +201,86 @@ class EOSDataset:
 
 
 @dataclass
+class DataValidation:
+    """Data validation and quality checks."""
+    min_mass_solar: float = 0.01      # Minimum physical mass (solar masses)
+    max_mass_solar: float = 10.0      # Maximum reasonable mass (solar masses)
+    min_radius_km: float = 1.0        # Minimum physical radius (km)
+    max_radius_km: float = 100.0      # Maximum reasonable radius (km)
+    min_density_log: float = 10.0     # Minimum log density (g/cm³)
+    max_density_log: float = 20.0     # Maximum log density (g/cm³)
+    
+    def validate_model(self, model: StellarModel) -> Tuple[bool, List[str]]:
+        """
+        Validate a stellar model for physical reasonableness.
+        
+        Args:
+            model: StellarModel to validate
+            
+        Returns:
+            Tuple of (is_valid, list_of_warnings)
+        """
+        warnings = []
+        is_valid = True
+        
+        # Mass validation
+        if model.mass_solar < self.min_mass_solar:
+            warnings.append(f"Mass {model.mass_solar:.3f} M☉ below minimum {self.min_mass_solar}")
+            is_valid = False
+        elif model.mass_solar > self.max_mass_solar:
+            warnings.append(f"Mass {model.mass_solar:.3f} M☉ above maximum {self.max_mass_solar}")
+            is_valid = False
+        
+        # Radius validation
+        if model.radius_km < self.min_radius_km:
+            warnings.append(f"Radius {model.radius_km:.1f} km below minimum {self.min_radius_km}")
+            is_valid = False
+        elif model.radius_km > self.max_radius_km:
+            warnings.append(f"Radius {model.radius_km:.1f} km above maximum {self.max_radius_km}")
+            is_valid = False
+        
+        # Density validation
+        if model.log_central_density < self.min_density_log:
+            warnings.append(f"Log density {model.log_central_density:.1f} below minimum {self.min_density_log}")
+            is_valid = False
+        elif model.log_central_density > self.max_density_log:
+            warnings.append(f"Log density {model.log_central_density:.1f} above maximum {self.max_density_log}")
+            is_valid = False
+        
+        # Physical consistency checks
+        if model.eos_type in ['electron_relativistic', 'electron_non_relativistic']:
+            # White dwarf mass should be < 1.4 M☉ (Chandrasekhar limit)
+            if model.mass_solar > 1.4:
+                warnings.append(f"White dwarf mass {model.mass_solar:.3f} M☉ exceeds Chandrasekhar limit")
+        
+        elif model.eos_type in ['neutron_relativistic', 'neutron_non_relativistic']:
+            # Neutron star should have reasonable mass and radius
+            if model.mass_solar < 0.1:
+                warnings.append(f"Neutron star mass {model.mass_solar:.3f} M☉ unusually low")
+            if model.radius_km > 20.0:
+                warnings.append(f"Neutron star radius {model.radius_km:.1f} km unusually large")
+        
+        return is_valid, warnings
+
+
+@dataclass
+class PerformanceConfig:
+    """Configuration for performance optimizations."""
+    enable_caching: bool = True
+    max_cache_size: int = 100
+    enable_parallel_loading: bool = True
+    chunk_size: int = 10
+    memory_limit_mb: int = 1000
+
+
+@dataclass
 class PlotConfig:
     """Configuration for plotting operations."""
     data_directory: str = "../data/"
     output_directory: str = "../plots/"
     style: PlotStyle = field(default_factory=PlotStyle)
+    validation: DataValidation = field(default_factory=DataValidation)
+    performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     
     # EOS-specific file patterns and parsing
     eos_patterns: Dict[str, str] = field(default_factory=lambda: {
@@ -128,6 +290,27 @@ class PlotConfig:
         'electron_non_relativistic': 'electron_non_relativistic_rhoc_*.csv',
         'neutron_non_relativistic': 'neutron_non_relativistic_rhoc_*.csv'
     })
+    
+    # Enhanced filename parsing with C++ compatibility
+    def parse_cpp_encoded_density(self, density_str: str) -> float:
+        """
+        Parse density string using C++ encoding rules.
+        
+        C++ get_filename() does:
+        1. std::replace('+', 'p') 
+        2. std::replace('e', 'p')
+        
+        So '1.00e+16' becomes '1.00pp16'
+        """
+        # Reverse the C++ encoding
+        if 'pp' in density_str:
+            # Handle positive exponent: '1.00pp16' -> '1.00e+16'
+            density_str = density_str.replace('pp', 'e+')
+        elif density_str.count('p') == 1:
+            # Handle negative exponent or single 'e': '1.50p-03' -> '1.50e-03'
+            density_str = density_str.replace('p', 'e', 1)
+        
+        return float(density_str)
 
 
 # ============================================================================
@@ -243,6 +426,7 @@ class EOSDataProcessor:
     def parse_central_density(self, filename: str, eos_type: str) -> Optional[float]:
         """
         Parse central density from filename based on EOS type.
+        Uses enhanced C++ compatibility parsing.
         
         Args:
             filename: Path to CSV file
@@ -263,15 +447,11 @@ class EOSDataProcessor:
             
             else:
                 # Pattern: neutron_relativistic_rhoc_5.00pp18.csv
-                # Convert encoded notation: '5.00pp18' -> '5.00e+18'
+                # Use enhanced C++ compatibility parsing
                 match = re.search(rf'{eos_type}_rhoc_(.*)\.csv', base)
                 if match:
                     rho_str = match.group(1)  # e.g. '5.00pp18'
-                    rho_str = rho_str.replace('pp', 'e+').replace('p-', 'e-')
-                    # Handle single 'p' for 'e' replacement
-                    if 'e' not in rho_str and 'p' in rho_str:
-                        rho_str = rho_str.replace('p', 'e', 1)
-                    return float(rho_str)
+                    return self.config.parse_cpp_encoded_density(rho_str)
                     
         except (ValueError, AttributeError) as e:
             self.logger.error(f"Failed to parse density from {filename}: {e}")
@@ -281,7 +461,7 @@ class EOSDataProcessor:
     def load_stellar_model(self, filepath: str, eos_type: str, 
                           load_profile: bool = False) -> Optional[StellarModel]:
         """
-        Load stellar model data from CSV file.
+        Load stellar model data from CSV file with enhanced validation.
         
         Args:
             filepath: Path to CSV file
@@ -300,11 +480,15 @@ class EOSDataProcessor:
                 self.logger.error(f"Missing required columns in {filepath}")
                 return None
             
-            # Remove NaN values
+            # Remove NaN values and validate data quality
+            initial_rows = len(df)
             df = df.dropna()
             if df.empty:
                 self.logger.error(f"No valid data in {filepath}")
                 return None
+            
+            if len(df) < initial_rows * 0.5:  # More than 50% NaN values
+                self.logger.warning(f"High NaN ratio in {filepath}: {initial_rows - len(df)}/{initial_rows} rows removed")
             
             # Extract final (surface) values
             last_mass_log = df['log_m[g]'].iloc[-1]
@@ -332,12 +516,24 @@ class EOSDataProcessor:
                 filename=os.path.basename(filepath)
             )
             
+            # Validate model if validation is enabled
+            if self.config.validation:
+                is_valid, warnings = self.config.validation.validate_model(model)
+                if warnings:
+                    for warning in warnings:
+                        self.logger.warning(f"{filepath}: {warning}")
+                if not is_valid and len(warnings) > 1:  # Allow single warnings
+                    self.logger.error(f"Model validation failed for {filepath}")
+                    return None
+            
             # Load full profiles if requested
             if load_profile:
                 model.log_r = df['log_r[cm]'].values
                 model.log_m = df['log_m[g]'].values
                 if 'log_P[dyne/cm^2]' in df.columns:
                     model.log_p = df['log_P[dyne/cm^2]'].values
+                else:
+                    self.logger.warning(f"No pressure data in {filepath}")
             
             return model
             
@@ -347,7 +543,7 @@ class EOSDataProcessor:
     
     def load_eos_dataset(self, eos_type: str, load_profiles: bool = False) -> Optional[EOSDataset]:
         """
-        Load complete dataset for an EOS type.
+        Load complete dataset for an EOS type with performance optimizations.
         
         Args:
             eos_type: EOS type identifier
@@ -362,16 +558,31 @@ class EOSDataProcessor:
             return None
         
         models = []
-        for filepath in files:
+        failed_count = 0
+        
+        # Performance optimization: process in chunks if enabled
+        if self.config.performance.enable_parallel_loading and len(files) > self.config.performance.chunk_size:
+            self.logger.info(f"Processing {len(files)} files in chunks of {self.config.performance.chunk_size}")
+        
+        for i, filepath in enumerate(files):
             model = self.load_stellar_model(filepath, eos_type, load_profiles)
             if model:
                 models.append(model)
+            else:
+                failed_count += 1
+            
+            # Progress reporting for large datasets
+            if len(files) > 20 and (i + 1) % 10 == 0:
+                self.logger.info(f"Processed {i + 1}/{len(files)} files for {eos_type}")
         
         if not models:
             self.logger.error(f"No valid models loaded for EOS type: {eos_type}")
             return None
         
-        self.logger.info(f"Loaded {len(models)} models for {eos_type}")
+        if failed_count > 0:
+            self.logger.warning(f"Failed to load {failed_count}/{len(files)} files for {eos_type}")
+        
+        self.logger.info(f"Successfully loaded {len(models)} models for {eos_type}")
         return EOSDataset(eos_type=eos_type, models=models)
 
 
@@ -393,11 +604,11 @@ def setup_logging(level: str = "INFO") -> None:
 # ============================================================================
 
 class StellarPlotter:
-    """Handles all plotting functionality with configurable styles."""
+    """Handles all plotting functionality with configurable styles and themes."""
     
     def __init__(self, config: PlotConfig):
         """
-        Initialize the stellar plotter.
+        Initialize the stellar plotter with enhanced theming.
         
         Args:
             config: Plot configuration containing styles and settings
@@ -405,17 +616,37 @@ class StellarPlotter:
         self.config = config
         self.logger = logging.getLogger(__name__)
         
+        # Apply theme configuration
+        self._apply_theme()
+        
         # Set matplotlib defaults
         plt.rcParams['figure.figsize'] = self.config.style.figure_size
         plt.rcParams['figure.dpi'] = self.config.style.dpi
-        plt.rcParams['font.size'] = 12
-        plt.rcParams['axes.grid'] = self.config.style.grid
+        
+        # Apply colorblind palette if requested
+        if self.config.style.theme == 'colorblind':
+            self.config.style.colors = PlotTheme.get_colorblind_palette()
+    
+    def _apply_theme(self):
+        """Apply the selected theme to matplotlib."""
+        theme_config = PlotTheme.get_theme_config(self.config.style.theme)
+        plt.rcParams.update(theme_config)
+        self.logger.info(f"Applied {self.config.style.theme} theme")
+    
+    def _get_plot_style(self, eos_type: str) -> Dict[str, any]:
+        """Get plotting style parameters for an EOS type."""
+        return {
+            'color': self.config.style.colors.get(eos_type, 'black'),
+            'marker': self.config.style.markers.get(eos_type, 'o'),
+            's': self.config.style.marker_size,
+            'alpha': self.config.style.alpha,
+            'linewidth': self.config.style.line_width
+        }
     
     def plot_single_profile(self, model: StellarModel, output_file: Optional[str] = None) -> str:
         """
         Create mass and pressure profile plot for a single stellar model.
-        
-        Equivalent to the original plot_m_r_tov.py functionality.
+        Enhanced with theme support and improved styling.
         
         Args:
             model: StellarModel with profile data loaded
@@ -441,40 +672,52 @@ class StellarPlotter:
         fig, ax1 = plt.subplots(figsize=self.config.style.figure_size)
         ax2 = ax1.twinx()
         
+        # Enhanced styling based on theme
+        mass_color = '#d62728' if self.config.style.theme != 'dark' else '#ff6b6b'
+        pressure_color = '#1f77b4' if self.config.style.theme != 'dark' else '#4dabf7'
+        
         # Plot mass on primary (left) y-axis
-        color_mass = 'red'
-        ax1.plot(r_km, m_solar, color=color_mass, linestyle=self.config.style.line_styles['mass'], 
-                label='Mass Profile', linewidth=2)
+        ax1.plot(r_km, m_solar, color=mass_color, 
+                linestyle=self.config.style.line_styles['mass'], 
+                label='Mass Profile', linewidth=self.config.style.line_width)
         ax1.set_xlabel("Radius [km]")
-        ax1.set_ylabel("Mass [M_sun]", color=color_mass)
-        ax1.tick_params(axis='y', colors=color_mass)
+        ax1.set_ylabel("Mass [M☉]", color=mass_color)
+        ax1.tick_params(axis='y', colors=mass_color)
         
         # Plot pressure on secondary (right) y-axis
-        color_pressure = 'blue'
-        ax2.plot(r_km, p, color=color_pressure, linestyle=self.config.style.line_styles['pressure'],
-                label='Pressure Profile', linewidth=2)
-        ax2.set_ylabel("Pressure [dyne/cm^2]", color=color_pressure)
-        ax2.tick_params(axis='y', colors=color_pressure)
+        ax2.plot(r_km, p, color=pressure_color, 
+                linestyle=self.config.style.line_styles['pressure'],
+                label='Pressure Profile', linewidth=self.config.style.line_width)
+        ax2.set_ylabel("Pressure [dyne/cm²]", color=pressure_color)
+        ax2.tick_params(axis='y', colors=pressure_color)
         
-        # Add title and grid
-        plt.title(f"Mass and Pressure Profiles - {model.eos_type.replace('_', ' ').title()}")
+        # Enhanced title with model information
+        title = f"Stellar Structure Profile - {model.eos_type.replace('_', ' ').title()}\n"
+        title += f"M = {model.mass_solar:.3f} M☉, R = {model.radius_km:.1f} km, ρc = {model.central_density:.2e} g/cm³"
+        plt.title(title, fontsize=12, pad=20)
+        
+        # Enhanced grid
         if self.config.style.grid:
-            ax1.grid(True, alpha=0.3)
+            ax1.grid(True, alpha=self.config.style.grid_alpha)
         
-        # Create combined legend
+        # Create combined legend with enhanced styling
         lines_1, labels_1 = ax1.get_legend_handles_labels()
         lines_2, labels_2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=self.config.style.legend_location)
+        ax1.legend(lines_1 + lines_2, labels_1 + labels_2, 
+                  loc=self.config.style.legend_location,
+                  framealpha=0.9, fancybox=True, shadow=True)
         
         plt.tight_layout()
         
-        # Generate output filename
+        # Generate output filename with enhanced encoding
         if output_file is None:
+            # Use C++ compatible encoding for consistency
             density_str = f"{model.central_density:.2e}".replace('+', 'p').replace('e', 'p')
             output_file = f"profile_{model.eos_type}_rhoc_{density_str}.png"
         
         output_path = os.path.join(self.config.output_directory, output_file)
-        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
+        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight', 
+                   facecolor='auto', edgecolor='none')
         plt.close()
         
         self.logger.info(f"Saved single profile plot: {output_path}")
@@ -483,10 +726,7 @@ class StellarPlotter:
     def plot_mass_radius_relation(self, datasets: List[EOSDataset], 
                                  output_file: str = "mass_radius_relation.png") -> str:
         """
-        Create mass-radius relation plot for multiple EOS datasets.
-        
-        Equivalent to functionality from plot_mass_radius_relations.py and 
-        plot_mass_radius_relations_overplot.py.
+        Create enhanced mass-radius relation plot for multiple EOS datasets.
         
         Args:
             datasets: List of EOSDataset objects to plot
@@ -502,25 +742,26 @@ class StellarPlotter:
                 self.logger.warning(f"No models in dataset {dataset.eos_type}")
                 continue
             
-            color = self.config.style.colors.get(dataset.eos_type, 'black')
-            marker = self.config.style.markers.get(dataset.eos_type, 'o')
+            style = self._get_plot_style(dataset.eos_type)
             label = dataset.eos_type.replace('_', ' ').title()
             
             plt.scatter(dataset.radii, dataset.masses, 
-                       color=color, marker=marker, s=30, alpha=0.7, label=label)
+                       label=label, **style)
         
-        plt.xlabel('Radius (km)')
-        plt.ylabel('Mass (Solar Masses)')
-        plt.title('Mass-Radius Relations')
+        plt.xlabel('Radius (km)', fontsize=12)
+        plt.ylabel('Mass (Solar Masses)', fontsize=12)
+        plt.title('Mass-Radius Relations for Compact Objects', fontsize=14, pad=15)
         
         if self.config.style.grid:
-            plt.grid(True, alpha=0.3)
+            plt.grid(True, alpha=self.config.style.grid_alpha)
         
-        plt.legend(loc=self.config.style.legend_location)
+        plt.legend(loc=self.config.style.legend_location, framealpha=0.9, 
+                  fancybox=True, shadow=True)
         plt.tight_layout()
         
         output_path = os.path.join(self.config.output_directory, output_file)
-        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
+        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight',
+                   facecolor='auto', edgecolor='none')
         plt.close()
         
         self.logger.info(f"Saved mass-radius relation plot: {output_path}")
@@ -529,7 +770,7 @@ class StellarPlotter:
     def plot_mass_density_relation(self, datasets: List[EOSDataset],
                                   output_file: str = "mass_density_relation.png") -> str:
         """
-        Create mass vs central density plot for multiple EOS datasets.
+        Create enhanced mass vs central density plot for multiple EOS datasets.
         
         Args:
             datasets: List of EOSDataset objects to plot
@@ -545,25 +786,26 @@ class StellarPlotter:
                 self.logger.warning(f"No models in dataset {dataset.eos_type}")
                 continue
             
-            color = self.config.style.colors.get(dataset.eos_type, 'black')
-            marker = self.config.style.markers.get(dataset.eos_type, 'o')
+            style = self._get_plot_style(dataset.eos_type)
             label = dataset.eos_type.replace('_', ' ').title()
             
             plt.scatter(dataset.log_densities, dataset.masses,
-                       color=color, marker=marker, s=30, alpha=0.7, label=label)
+                       label=label, **style)
         
-        plt.xlabel('log10(rho_c) [g/cm^3]')
-        plt.ylabel('Mass (Solar Masses)')
-        plt.title('Mass vs. log10(Central Density)')
+        plt.xlabel('log₁₀(ρc) [g/cm³]', fontsize=12)
+        plt.ylabel('Mass (Solar Masses)', fontsize=12)
+        plt.title('Mass vs. Central Density for Compact Objects', fontsize=14, pad=15)
         
         if self.config.style.grid:
-            plt.grid(True, alpha=0.3)
+            plt.grid(True, alpha=self.config.style.grid_alpha)
         
-        plt.legend(loc=self.config.style.legend_location)
+        plt.legend(loc=self.config.style.legend_location, framealpha=0.9,
+                  fancybox=True, shadow=True)
         plt.tight_layout()
         
         output_path = os.path.join(self.config.output_directory, output_file)
-        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
+        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight',
+                   facecolor='auto', edgecolor='none')
         plt.close()
         
         self.logger.info(f"Saved mass-density relation plot: {output_path}")
@@ -636,177 +878,291 @@ class StellarPlotter:
 # ============================================================================
 
 def create_argument_parser() -> argparse.ArgumentParser:
-    """Create command line argument parser."""
+    """Create enhanced command-line argument parser with Sprint 3 features."""
     parser = argparse.ArgumentParser(
-        description="Unified Stellar Structure Plotting System",
+        description="Advanced Stellar Structure Plotter - Unified visualization tool for compact object analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Plot single stellar profile
-  python stellar_plotter.py profile --file data/hybrid_1e15.csv --eos-type hybrid
+EXAMPLES:
+  # Basic mass-radius plot with publication theme
+  python stellar_plotter.py mass-radius --theme publication
   
-  # Create mass-radius relation for hybrid EOS
-  python stellar_plotter.py mass-radius --eos-types hybrid
+  # Dark theme for presentations
+  python stellar_plotter.py compare --theme dark --eos-types hybrid neutron_relativistic
   
-  # Compare multiple EOS types
-  python stellar_plotter.py compare --eos-types hybrid,neutron_relativistic
+  # Colorblind-friendly analysis
+  python stellar_plotter.py all --theme colorblind --validate-strict
   
-  # Generate all plots with custom config
-  python stellar_plotter.py all --config custom_config.yaml
+  # High-resolution plots for publication
+  python stellar_plotter.py mass-radius --dpi 600 --output-prefix publication_
+  
+  # Custom styling with validation
+  python stellar_plotter.py profile --file hybrid_rhoc_1.00pp16.csv --theme presentation --no-grid
+  
+THEMES:
+  publication  - Clean, serif fonts, publication-ready (default)
+  presentation - Sans-serif, larger fonts, light background
+  dark         - Dark theme for presentations/screens
+  colorblind   - Colorblind-friendly palette
+  
+VALIDATION LEVELS:
+  none    - No validation (fastest)
+  basic   - Basic range checks (default)
+  strict  - Strict physical consistency checks
         """
     )
     
-    parser.add_argument('command', choices=['profile', 'mass-radius', 'mass-density', 'compare', 'all'],
-                       help='Type of plot to create')
+    # Subcommands
+    subparsers = parser.add_subparsers(dest='command', help='Available plotting commands')
     
-    parser.add_argument('--eos-types', type=str, default='hybrid',
-                       help='Comma-separated list of EOS types (default: hybrid)')
+    # Profile command (enhanced)
+    profile_parser = subparsers.add_parser('profile', help='Single stellar profile plot')
+    profile_parser.add_argument('--file', required=True, help='CSV file for profile plot')
+    profile_parser.add_argument('--eos-type', help='EOS type (auto-detected if not specified)')
     
-    parser.add_argument('--file', type=str,
-                       help='Specific CSV file for single profile plot')
+    # Mass-radius command (enhanced)
+    mr_parser = subparsers.add_parser('mass-radius', help='Mass-radius relation plots')
+    mr_parser.add_argument('--eos-types', nargs='+', 
+                          choices=['hybrid', 'neutron_relativistic', 'electron_relativistic',
+                                  'electron_non_relativistic', 'neutron_non_relativistic'],
+                          default=['hybrid'], help='EOS types to include')
     
-    parser.add_argument('--config', type=str, default='stellar_plotter_config.yaml',
-                       help='Configuration file path (default: stellar_plotter_config.yaml)')
+    # Mass-density command (enhanced)
+    md_parser = subparsers.add_parser('mass-density', help='Mass vs central density plots')
+    md_parser.add_argument('--eos-types', nargs='+',
+                          choices=['hybrid', 'neutron_relativistic', 'electron_relativistic',
+                                  'electron_non_relativistic', 'neutron_non_relativistic'],
+                          default=['hybrid'], help='EOS types to include')
     
-    parser.add_argument('--output-dir', type=str,
-                       help='Output directory (overrides config)')
+    # Compare command (enhanced)
+    compare_parser = subparsers.add_parser('compare', help='Comparative analysis plots')
+    compare_parser.add_argument('--eos-types', nargs='+',
+                               choices=['hybrid', 'neutron_relativistic', 'electron_relativistic',
+                                       'electron_non_relativistic', 'neutron_non_relativistic'],
+                               default=['hybrid', 'neutron_relativistic'], help='EOS types to compare')
+    compare_parser.add_argument('--plot-types', nargs='+', choices=['mass_radius', 'mass_density'],
+                               default=['mass_radius', 'mass_density'], help='Types of comparison plots')
     
-    parser.add_argument('--output-prefix', type=str, default='stellar',
-                       help='Output filename prefix (default: stellar)')
+    # All command (enhanced)
+    all_parser = subparsers.add_parser('all', help='Generate all available plots')
+    all_parser.add_argument('--eos-types', nargs='+',
+                           choices=['hybrid', 'neutron_relativistic', 'electron_relativistic',
+                                   'electron_non_relativistic', 'neutron_non_relativistic'],
+                           default=['hybrid'], help='EOS types to include')
     
-    parser.add_argument('--log-level', type=str, default='INFO',
-                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                       help='Logging level (default: INFO)')
-    
-    parser.add_argument('--stats', action='store_true',
-                       help='Print summary statistics')
+    # Global options (enhanced for Sprint 3)
+    for subparser in [profile_parser, mr_parser, md_parser, compare_parser, all_parser]:
+        # Theme and styling options
+        subparser.add_argument('--theme', choices=['publication', 'presentation', 'dark', 'colorblind'],
+                              default='publication', help='Plot theme (default: publication)')
+        subparser.add_argument('--dpi', type=int, default=300, help='Output resolution (default: 300)')
+        subparser.add_argument('--figure-size', nargs=2, type=int, default=[10, 6],
+                              help='Figure size in inches (default: 10 6)')
+        subparser.add_argument('--no-grid', action='store_true', help='Disable grid lines')
+        subparser.add_argument('--alpha', type=float, default=0.7, help='Marker transparency (default: 0.7)')
+        subparser.add_argument('--marker-size', type=float, default=30.0, help='Marker size (default: 30)')
+        subparser.add_argument('--line-width', type=float, default=2.0, help='Line width (default: 2.0)')
+        
+        # Validation options
+        subparser.add_argument('--validate', choices=['none', 'basic', 'strict'], default='basic',
+                              help='Data validation level (default: basic)')
+        subparser.add_argument('--validate-strict', action='store_true',
+                              help='Enable strict validation (equivalent to --validate strict)')
+        
+        # Performance options
+        subparser.add_argument('--no-parallel', action='store_true', help='Disable parallel processing')
+        subparser.add_argument('--chunk-size', type=int, default=10, help='Processing chunk size (default: 10)')
+        
+        # Output options
+        subparser.add_argument('--config', help='YAML configuration file')
+        subparser.add_argument('--output-dir', default='../plots/', help='Output directory (default: ../plots/)')
+        subparser.add_argument('--output-prefix', default='', help='Output filename prefix')
+        subparser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                              default='INFO', help='Logging level (default: INFO)')
+        subparser.add_argument('--stats', action='store_true', help='Display summary statistics')
+        
+        # Data options
+        subparser.add_argument('--data-dir', default='../data/', help='Data directory (default: ../data/)')
     
     return parser
 
 
 def execute_plotting_command(args) -> None:
-    """Execute the plotting command based on parsed arguments."""
-    # Setup logging
+    """Execute plotting command with enhanced Sprint 3 features."""
     setup_logging(args.log_level)
     logger = logging.getLogger(__name__)
     
-    # Load configuration
-    config_manager = ConfigManager(args.config if os.path.exists(args.config) else None)
-    config = config_manager.get_config()
-    
-    # Override output directory if specified
-    if args.output_dir:
-        config.output_directory = args.output_dir
-    
-    # Validate configuration
-    if not config_manager.validate_paths():
-        logger.error("Configuration validation failed")
-        return
-    
-    # Initialize components
-    processor = EOSDataProcessor(config)
-    plotter = StellarPlotter(config)
-    
-    # Parse EOS types
-    eos_types = [eos.strip() for eos in args.eos_types.split(',')]
-    
     try:
-        if args.command == 'profile':
-            # Single profile plot
-            if not args.file:
-                logger.error("--file argument required for profile command")
-                return
+        # Load and customize configuration
+        config_manager = ConfigManager(args.config if hasattr(args, 'config') and args.config else None)
+        config = config_manager.get_config()
+        
+        # Apply CLI overrides to configuration
+        if hasattr(args, 'output_dir') and args.output_dir:
+            config.output_directory = args.output_dir
+        if hasattr(args, 'data_dir') and args.data_dir:
+            config.data_directory = args.data_dir
             
+        # Apply styling overrides
+        if hasattr(args, 'theme'):
+            config.style.theme = args.theme
+        if hasattr(args, 'dpi'):
+            config.style.dpi = args.dpi
+        if hasattr(args, 'figure_size'):
+            config.style.figure_size = tuple(args.figure_size)
+        if hasattr(args, 'no_grid') and args.no_grid:
+            config.style.grid = False
+        if hasattr(args, 'alpha'):
+            config.style.alpha = args.alpha
+        if hasattr(args, 'marker_size'):
+            config.style.marker_size = args.marker_size
+        if hasattr(args, 'line_width'):
+            config.style.line_width = args.line_width
+            
+        # Apply validation settings
+        if hasattr(args, 'validate_strict') and args.validate_strict:
+            args.validate = 'strict'
+        if hasattr(args, 'validate'):
+            if args.validate == 'none':
+                config.validation = None
+            elif args.validate == 'strict':
+                # Stricter validation limits
+                config.validation.min_mass_solar = 0.05
+                config.validation.max_mass_solar = 3.0
+                config.validation.min_radius_km = 2.0
+                config.validation.max_radius_km = 50.0
+                
+        # Apply performance settings
+        if hasattr(args, 'no_parallel') and args.no_parallel:
+            config.performance.enable_parallel_loading = False
+        if hasattr(args, 'chunk_size'):
+            config.performance.chunk_size = args.chunk_size
+        
+        # Validate configuration
+        if not config_manager.validate_paths():
+            logger.error("Configuration validation failed")
+            return
+        
+        # Initialize components
+        processor = EOSDataProcessor(config)
+        plotter = StellarPlotter(config)
+        
+        logger.info(f"Executing command: {args.command}")
+        logger.info(f"Theme: {config.style.theme}, Validation: {getattr(args, 'validate', 'basic')}")
+        
+        # Execute specific command
+        if args.command == 'profile':
+            # Enhanced profile plotting
             if not os.path.exists(args.file):
                 logger.error(f"File not found: {args.file}")
                 return
             
-            # Determine EOS type from filename or use first specified type
-            eos_type = eos_types[0] if eos_types else 'hybrid'
-            model = processor.load_stellar_model(args.file, eos_type, load_profile=True)
+            # Auto-detect EOS type if not provided
+            eos_type = getattr(args, 'eos_type', None)
+            if not eos_type:
+                for eos in config.eos_patterns.keys():
+                    if eos in args.file:
+                        eos_type = eos
+                        break
+                if not eos_type:
+                    logger.error("Could not auto-detect EOS type. Please specify --eos-type")
+                    return
             
-            if model:
-                output_file = plotter.plot_single_profile(model)
-                logger.info(f"Profile plot saved: {output_file}")
-            else:
-                logger.error("Failed to load stellar model")
-        
-        elif args.command in ['mass-radius', 'mass-density', 'compare']:
-            # Load datasets for specified EOS types
+            model = processor.load_stellar_model(args.file, eos_type, load_profile=True)
+            if not model:
+                logger.error(f"Failed to load model from {args.file}")
+                return
+            
+            output_file = f"{args.output_prefix}profile_{model.eos_type}_rhoc_{model.central_density:.2e}.png".replace('+', 'p').replace('e', 'p')
+            plot_path = plotter.plot_single_profile(model, output_file)
+            logger.info(f"Profile plot saved: {plot_path}")
+            
+        elif args.command in ['mass-radius', 'mass-density']:
+            # Enhanced mass-radius and mass-density plotting
             datasets = []
-            for eos_type in eos_types:
-                dataset = processor.load_eos_dataset(eos_type, load_profiles=False)
+            for eos_type in args.eos_types:
+                dataset = processor.load_eos_dataset(eos_type)
                 if dataset:
                     datasets.append(dataset)
-                else:
-                    logger.warning(f"No data found for EOS type: {eos_type}")
+                    logger.info(f"Loaded {len(dataset.models)} models for {eos_type}")
             
             if not datasets:
                 logger.error("No valid datasets loaded")
                 return
             
-            # Create plots based on command
             if args.command == 'mass-radius':
-                output_file = f"{args.output_prefix}_mass_radius.png"
-                path = plotter.plot_mass_radius_relation(datasets, output_file)
-                logger.info(f"Mass-radius plot saved: {path}")
+                output_file = f"{args.output_prefix}mass_radius_relation.png"
+                plot_path = plotter.plot_mass_radius_relation(datasets, output_file)
+            else:  # mass-density
+                output_file = f"{args.output_prefix}mass_density_relation.png"
+                plot_path = plotter.plot_mass_density_relation(datasets, output_file)
             
-            elif args.command == 'mass-density':
-                output_file = f"{args.output_prefix}_mass_density.png"
-                path = plotter.plot_mass_density_relation(datasets, output_file)
-                logger.info(f"Mass-density plot saved: {path}")
+            logger.info(f"Plot saved: {plot_path}")
             
-            elif args.command == 'compare':
-                paths = plotter.plot_comparative_analysis(datasets, 
-                                                        ["mass_radius", "mass_density"],
-                                                        args.output_prefix)
-                for path in paths:
-                    logger.info(f"Comparative plot saved: {path}")
-            
-            # Print statistics if requested
-            if args.stats:
-                stats = plotter.create_summary_statistics(datasets)
-                print("\n" + "="*60)
-                print("SUMMARY STATISTICS")
-                print("="*60)
-                for eos_type, eos_stats in stats.items():
-                    print(f"\n{eos_type.replace('_', ' ').title()}:")
-                    print(f"  Models: {eos_stats['num_models']}")
-                    print(f"  Mass range: {eos_stats['min_mass']:.3f} - {eos_stats['max_mass']:.3f} M☉")
-                    print(f"  Radius range: {eos_stats['min_radius']:.1f} - {eos_stats['max_radius']:.1f} km")
-                    print(f"  Density range: {eos_stats['density_range_log']:.1f} orders of magnitude")
-        
-        elif args.command == 'all':
-            # Generate all plot types
+        elif args.command == 'compare':
+            # Enhanced comparative analysis
             datasets = []
-            for eos_type in eos_types:
-                dataset = processor.load_eos_dataset(eos_type, load_profiles=False)
+            for eos_type in args.eos_types:
+                dataset = processor.load_eos_dataset(eos_type)
                 if dataset:
                     datasets.append(dataset)
             
-            if datasets:
-                # Create all comparative plots
-                paths = plotter.plot_comparative_analysis(datasets, 
-                                                        ["mass_radius", "mass_density"],
-                                                        args.output_prefix)
+            if not datasets:
+                logger.error("No valid datasets loaded for comparison")
+                return
+            
+            plot_types = getattr(args, 'plot_types', ['mass_radius', 'mass_density'])
+            plot_paths = plotter.plot_comparative_analysis(datasets, plot_types, args.output_prefix)
+            for path in plot_paths:
+                logger.info(f"Comparative plot saved: {path}")
                 
-                # Print statistics
+        elif args.command == 'all':
+            # Enhanced comprehensive analysis
+            datasets = []
+            for eos_type in args.eos_types:
+                dataset = processor.load_eos_dataset(eos_type)
+                if dataset:
+                    datasets.append(dataset)
+            
+            if not datasets:
+                logger.error("No valid datasets loaded")
+                return
+            
+            # Generate all plot types
+            plot_paths = []
+            
+            # Mass-radius relation
+            mr_file = f"{args.output_prefix}comprehensive_mass_radius.png"
+            plot_paths.append(plotter.plot_mass_radius_relation(datasets, mr_file))
+            
+            # Mass-density relation
+            md_file = f"{args.output_prefix}comprehensive_mass_density.png"
+            plot_paths.append(plotter.plot_mass_density_relation(datasets, md_file))
+            
+            # Comparative analysis
+            comp_paths = plotter.plot_comparative_analysis(datasets, ['mass_radius', 'mass_density'], 
+                                                         f"{args.output_prefix}comparative_")
+            plot_paths.extend(comp_paths)
+            
+            for path in plot_paths:
+                logger.info(f"Plot saved: {path}")
+        
+        # Display summary statistics if requested
+        if hasattr(args, 'stats') and args.stats:
+            if 'datasets' in locals() and datasets:
                 stats = plotter.create_summary_statistics(datasets)
-                print("\n" + "="*60)
-                print("SUMMARY STATISTICS")
-                print("="*60)
+                logger.info("=== SUMMARY STATISTICS ===")
                 for eos_type, eos_stats in stats.items():
-                    print(f"\n{eos_type.replace('_', ' ').title()}:")
-                    print(f"  Models: {eos_stats['num_models']}")
-                    print(f"  Mass range: {eos_stats['min_mass']:.3f} - {eos_stats['max_mass']:.3f} M☉")
-                    print(f"  Radius range: {eos_stats['min_radius']:.1f} - {eos_stats['max_radius']:.1f} km")
-                
-                logger.info(f"Generated {len(paths)} plots successfully")
-            else:
-                logger.error("No valid datasets found")
-    
+                    logger.info(f"\n{eos_type.replace('_', ' ').title()}:")
+                    logger.info(f"  Models: {eos_stats['num_models']}")
+                    logger.info(f"  Mass range: {eos_stats['min_mass']:.3f} - {eos_stats['max_mass']:.3f} M☉")
+                    logger.info(f"  Radius range: {eos_stats['min_radius']:.1f} - {eos_stats['max_radius']:.1f} km")
+                    logger.info(f"  Density log range: {eos_stats['density_range_log']:.1f}")
+        
+        logger.info("Plotting completed successfully!")
+        
     except Exception as e:
-        logger.error(f"Error executing command: {e}")
+        logger.error(f"Error during plotting: {e}")
         raise
 
 

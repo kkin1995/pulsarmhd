@@ -1,27 +1,29 @@
-# Stellar Plotter Configuration File
-# This file defines paths, EOS patterns, and plotting styles for the unified stellar plotter
+# Enhanced Stellar Plotter Configuration - Sprint 3
+# Advanced configuration for stellar structure visualization
 
 # Data and output directories
 data_directory: "../data/"
 output_directory: "../plots/"
 
-# Equation of State (EOS) file patterns
-eos_patterns:
-  hybrid: "tov_solution_magnetic_bps_bbp_polytrope_*.csv"
-  neutron_relativistic: "neutron_relativistic_rhoc_*.csv"
-  electron_relativistic: "electron_relativistic_rhoc_*.csv"
-  electron_non_relativistic: "electron_non_relativistic_rhoc_*.csv"
-  neutron_non_relativistic: "neutron_non_relativistic_rhoc_*.csv"
-
-# Plotting style configuration
-plotting:
-  # Figure settings
-  figure_size: [10, 6]
-  dpi: 300
-  grid: true
-  legend_location: "best"
+# Plot styling and themes
+style:
+  # Theme selection: publication, presentation, dark, colorblind
+  theme: "publication"
   
-  # Colors for different EOS types
+  # Figure properties
+  figure_size: [10, 6]  # Width, height in inches
+  dpi: 300              # Resolution for output images
+  
+  # Visual styling
+  grid: true
+  grid_alpha: 0.3
+  legend_location: "best"
+  font_family: "serif"   # serif, sans-serif, monospace
+  line_width: 2.0
+  marker_size: 30.0
+  alpha: 0.7
+  
+  # EOS-specific colors (can be overridden by theme)
   colors:
     hybrid: "blue"
     neutron_relativistic: "green"
@@ -29,7 +31,7 @@ plotting:
     electron_non_relativistic: "orange"
     neutron_non_relativistic: "purple"
   
-  # Markers for scatter plots
+  # EOS-specific markers
   markers:
     hybrid: "o"
     neutron_relativistic: "s"
@@ -37,11 +39,84 @@ plotting:
     electron_non_relativistic: "v"
     neutron_non_relativistic: "D"
   
-  # Line styles for different data types
+  # Line styles for different plot elements
   line_styles:
     mass: "-"
     pressure: "--"
     density: ":"
+
+# Data validation settings
+validation:
+  # Physical limits for stellar models
+  min_mass_solar: 0.01    # Minimum mass in solar masses
+  max_mass_solar: 10.0    # Maximum mass in solar masses
+  min_radius_km: 1.0      # Minimum radius in km
+  max_radius_km: 100.0    # Maximum radius in km
+  min_density_log: 10.0   # Minimum log10(density) in g/cm³
+  max_density_log: 20.0   # Maximum log10(density) in g/cm³
+
+# Performance optimization settings
+performance:
+  enable_caching: true
+  max_cache_size: 100
+  enable_parallel_loading: true
+  chunk_size: 10
+  memory_limit_mb: 1000
+
+# EOS file patterns for automatic discovery
+# These patterns match the C++ program's output naming convention
+eos_patterns:
+  hybrid: "tov_solution_magnetic_bps_bbp_polytrope_*.csv"
+  neutron_relativistic: "neutron_relativistic_rhoc_*.csv"
+  electron_relativistic: "electron_relativistic_rhoc_*.csv"
+  electron_non_relativistic: "electron_non_relativistic_rhoc_*.csv"
+  neutron_non_relativistic: "neutron_non_relativistic_rhoc_*.csv"
+
+# Theme-specific configurations
+themes:
+  publication:
+    description: "Clean, publication-ready plots with serif fonts"
+    font_family: "serif"
+    background_color: "white"
+    grid_style: "subtle"
+    
+  presentation:
+    description: "Large fonts and high contrast for presentations"
+    font_family: "sans-serif"
+    background_color: "#f8f8f8"
+    grid_style: "visible"
+    
+  dark:
+    description: "Dark theme for screens and presentations"
+    font_family: "sans-serif"
+    background_color: "#1e1e1e"
+    text_color: "white"
+    grid_style: "subtle"
+    
+  colorblind:
+    description: "Colorblind-friendly palette with high contrast"
+    font_family: "sans-serif"
+    background_color: "white"
+    grid_style: "visible"
+    # Uses special colorblind-safe palette defined in code
+
+# Advanced plotting options
+advanced:
+  # Statistical analysis
+  enable_statistics: true
+  confidence_intervals: false
+  
+  # Export options
+  export_formats: ["png"]  # png, pdf, svg, eps
+  high_dpi_export: true
+  
+  # Annotation options
+  show_model_count: true
+  show_physical_limits: false  # e.g., Chandrasekhar limit
+  
+  # Comparison features
+  enable_error_bars: false
+  show_trend_lines: false
 
 # Logging configuration
 logging:
