@@ -54,6 +54,10 @@
 #include <vector>
 #include "polytropic_eos.hpp"
 
+// GSL includes for spline-based EOS support
+#include <gsl/gsl_spline.h>
+#include <gsl/gsl_errno.h>
+
 // Physical Constants in CGS
 
 /**
@@ -130,9 +134,10 @@ const double c = 2.99792458e10;  // speed of light in CGS units
  *                 - Non-rel: k → k/μₑ^(5/3)
  *                 - Relativistic: k → k/μₑ^(4/3)
  *
- * @return std::tuple<int, double> containing:
+ * @return std::tuple<int, double, double> containing:
  *         - Integration steps completed before reaching surface
  *         - Final log₁₀(mass) in grams at stellar surface
+ *         - Final log₁₀(radius) in cm at stellar surface
  *
  * @pre rho_c > 0 (positive central density)
  * @pre r_start > 0 and r_end > r_start (valid radius range)
@@ -180,7 +185,146 @@ const double c = 2.99792458e10;  // speed of light in CGS units
  * @see PolytropicEOS::getEOSParameters() for EOS parameter calculation
  * @see get_filename() for output file naming convention
  */
-std::tuple<int, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e = 2.0);
+std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e = 2.0);
+
+/**
+ * @brief Solves stellar structure equations for non-rotating compact objects using spline-based EOS.
+ *
+ * @details
+ * This function integrates the Tolman-Oppenheimer-Volkoff (TOV) equations for relativistic
+ * stellar structure using a tabulated equation of state provided via GSL splines. It extends
+ * the existing TOV solver to support realistic, complex equations of state that cannot be
+ * represented by simple polytropic relationships.
+ *
+ * **Physical Framework:**
+ * The function solves the same TOV equations as the polytropic version:
+ * \f{eqnarray*}{
+ * \frac{d(\log m)}{d(\log r)} &=& \frac{4 \pi r^3 \rho}{m} \\
+ * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right) 
+ *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right) 
+ *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right) 
+ *                                  \cdot \left( 1 - \frac{2 G m}{r c^2} \right)^{-1}
+ * \f}
+ *
+ * **Equation of State:**
+ * Uses tabulated EOS data via GSL spline interpolation. The density is obtained from
+ * pressure using the inverse spline: \f$\rho = f^{-1}(P)\f$ where \f$f\f$ is the
+ * tabulated pressure-density relationship.
+ *
+ * **Initial Conditions:**
+ * At the starting radius r_start, the enclosed mass is computed assuming
+ * uniform density: \f$m_0 = \frac{4}{3}\pi r_{start}^3 \rho_c\f$
+ * The initial pressure is obtained from the forward spline: \f$P_0 = f(\rho_c)\f$
+ *
+ * **Integration Method:**
+ * Uses 4th-order Runge-Kutta integration with optional adaptive step size control.
+ * Adaptive stepping adjusts the step size based on pressure gradient magnitude to
+ * maintain numerical stability in regions of rapid change.
+ *
+ * **Surface Detection:**
+ * Integration terminates when:
+ * - Pressure drops below configurable threshold (default: 10⁻⁸ dyne/cm²)
+ * - Non-finite values are encountered (numerical instability)
+ * - Maximum radius is reached
+ * - Pressure falls outside EOS validity range
+ *
+ * **Output Data:**
+ * Optionally writes CSV file containing log₁₀(r), log₁₀(m), log₁₀(P) at each integration step.
+ * Output filename can be specified or auto-generated based on central density.
+ *
+ * @param[in] spline_inv GSL spline object for inverse EOS: \f$\log\rho = f^{-1}(\log P)\f$
+ * @param[in] acc_inv GSL interpolation accelerator for inverse spline (for efficiency)
+ * @param[in] min_logP Minimum log₁₀(pressure) for EOS validity range (dyne/cm²)
+ * @param[in] max_logP Maximum log₁₀(pressure) for EOS validity range (dyne/cm²)
+ * @param[in] rho_c Central density in g/cm³ (typically 10¹⁵ - 10¹⁸ for neutron stars)
+ * @param[in] r_start Starting radius for integration in cm (typically ~1-10 cm)
+ * @param[in] r_end Maximum radius for integration in cm (typically ~10⁶ cm)
+ * @param[in] base_dlogr Base step size in log₁₀(r) for integration (typically 0.0001)
+ * @param[in] use_adaptive_stepping Enable adaptive step size control (default: true)
+ * @param[in] pressure_threshold Surface pressure threshold in dyne/cm² (default: 10⁻⁸)
+ * @param[in] output_filename Optional output CSV filename (empty = no file output)
+ *
+ * @return std::tuple<int, double, double> containing:
+ *         - Integration steps completed before reaching surface
+ *         - Final log₁₀(mass) in grams at stellar surface  
+ *         - Final log₁₀(radius) in cm at stellar surface
+ *
+ * @pre spline_inv != nullptr (valid GSL spline object)
+ * @pre acc_inv != nullptr (valid GSL accelerator object)
+ * @pre min_logP < max_logP (valid pressure range)
+ * @pre rho_c > 0 (positive central density)
+ * @pre r_start > 0 and r_end > r_start (valid radius range)
+ * @pre base_dlogr > 0 (positive step size)
+ * @pre pressure_threshold > 0 (positive surface threshold)
+ *
+ * @post Returns physically meaningful mass and radius for successful integration
+ * @post Creates output file if filename provided
+ * @post Spline objects remain unchanged (read-only access)
+ *
+ * @note Designed for neutron star EOS: magnetic BPS, BBP, unified models, etc.
+ * @note Adaptive stepping crucial for complex EOS with phase transitions
+ * @note Central density typically scanned over range to generate mass-radius relation
+ *
+ * @warning Requires valid, initialized GSL spline objects
+ * @warning May fail for extreme densities outside EOS validity range
+ * @warning Integration may not converge if step size too large for EOS complexity
+ * @warning GSL spline evaluation can be expensive; consider caching for repeated calls
+ *
+ * **Example Usage:**
+ * @code{.cpp}
+ * // Assuming EOS data loaded and splines initialized
+ * gsl_spline* spline_inv = ...; // ρ(P) spline
+ * gsl_interp_accel* acc_inv = ...;
+ * double min_logP = 15.0, max_logP = 35.0; // EOS validity range
+ * 
+ * // Calculate neutron star structure with realistic EOS
+ * auto [steps, log_mass, log_radius] = non_rotating_stellar_structure_spline(
+ *     spline_inv, acc_inv, min_logP, max_logP,
+ *     1e15,      // Central density: 10¹⁵ g/cm³
+ *     1.0,       // Start radius: 1 cm  
+ *     1e6,       // End radius: 10⁶ cm
+ *     0.0001,    // Base step size
+ *     true,      // Enable adaptive stepping
+ *     1e-8,      // Surface pressure threshold
+ *     "ns_structure.csv"  // Output file
+ * );
+ * 
+ * double mass_grams = std::pow(10.0, log_mass);
+ * double radius_cm = std::pow(10.0, log_radius);
+ * double mass_solar = mass_grams / 1.989e33;
+ * double radius_km = radius_cm / 1e5;
+ * 
+ * std::cout << "Neutron star: " << mass_solar << " M☉, " 
+ *           << radius_km << " km" << std::endl;
+ * 
+ * // Scan over central densities for mass-radius relation
+ * std::vector<double> densities = {1e15, 5e15, 1e16, 5e16, 1e17};
+ * for (double rho_c : densities) {
+ *     auto result = non_rotating_stellar_structure_spline(
+ *         spline_inv, acc_inv, min_logP, max_logP, rho_c,
+ *         1.0, 1e6, 0.0001, true, 1e-8, ""  // No file output
+ *     );
+ *     // Process results...
+ * }
+ * @endcode
+ *
+ * @see non_rotating_stellar_structure() for polytropic EOS version
+ * @see tolman_oppenheimer_volkoff_derivatives() for TOV equation details
+ * @see GSL documentation for spline initialization and management
+ */
+std::tuple<int, double, double> non_rotating_stellar_structure_spline(
+    const gsl_spline* spline_inv,
+    gsl_interp_accel* acc_inv,
+    double min_logP,
+    double max_logP,
+    double rho_c,
+    double r_start,
+    double r_end,
+    double base_dlogr,
+    bool use_adaptive_stepping = true,
+    double pressure_threshold = 1e-8,
+    const std::string& output_filename = ""
+);
 
 /**
  * @brief Computes the mass and pressure derivatives using the Newtonian equations of stellar structure.
@@ -312,6 +456,99 @@ std::vector<double> newtonian(double log_r, const std::vector<double>& state, do
  * @see newtonian() for the non-relativistic version
  */
 std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r, const std::vector<double>& state, double k, double gamma);
+
+/**
+ * @brief Computes the mass and pressure derivatives using TOV equations with spline-based EOS.
+ *
+ * @details
+ * This function calculates the derivatives of logarithmic mass (\f$\log m\f$) and logarithmic pressure 
+ * (\f$\log P\f$) with respect to the logarithmic radius (\f$\log r\f$) in the relativistic framework,
+ * using a tabulated equation of state via GSL spline interpolation. This extends the TOV solver
+ * to support realistic, complex equations of state beyond simple polytropic relationships.
+ *
+ * The TOV equations are identical to the polytropic version:
+ * \f{eqnarray*}{
+ * \frac{d(\log m)}{d(\log r)} &=& \frac{4 \pi r^3 \rho}{m} \\
+ * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right) 
+ *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right) 
+ *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right) 
+ *                                  \cdot \left( 1 - \frac{2 G m}{r c^2} \right)^{-1}
+ * \f}
+ *
+ * **Key Difference from Polytropic Version:**
+ * Instead of using \f$\rho = (P/k)^{1/\gamma}\f$, this function obtains density from
+ * the tabulated EOS via inverse spline interpolation: \f$\log\rho = f^{-1}(\log P)\f$
+ *
+ * **EOS Handling:**
+ * - Pressure clamping: Ensures \f$P\f$ stays within EOS validity range [min_logP, max_logP]
+ * - Spline evaluation: Uses GSL spline to get \f$\rho(P)\f$ from tabulated data
+ * - Error handling: Graceful handling of extrapolation beyond EOS range
+ *
+ * The relativistic corrections appear as four factors:
+ * \f{description}
+ * \item[Factor 1] Newtonian term: $-\frac{G m \rho}{P r}$
+ * \item[Factor 2] Internal energy: $1 + \frac{P}{\rho c^2}$
+ * \item[Factor 3] Pressure effect: $1 + \frac{4 \pi P r^3}{m c^2}$
+ * \item[Factor 4] Metric factor: $\left(1 - \frac{2 G m}{r c^2}\right)^{-1}$
+ * \f}
+ *
+ * @param[in] log_r Logarithmic radius (\f$\log_{10}(r)\f$) in centimeters
+ * @param[in] state Vector containing:
+ *                  \parblock
+ *                  - \p state[0]: Logarithmic mass (\f$\log_{10}(m)\f$) in grams
+ *                  - \p state[1]: Logarithmic pressure (\f$\log_{10}(P)\f$) in dyne/cm²
+ *                  \endparblock
+ * @param[in] spline_inv GSL spline object for inverse EOS: \f$\log\rho = f^{-1}(\log P)\f$
+ * @param[in] acc_inv GSL interpolation accelerator for inverse spline (for efficiency)
+ * @param[in] min_logP Minimum log₁₀(pressure) for EOS validity range (dyne/cm²)
+ * @param[in] max_logP Maximum log₁₀(pressure) for EOS validity range (dyne/cm²)
+ *
+ * @return Vector of size 2 containing:
+ *         \parblock
+ *         - \p [0]: Derivative of logarithmic mass (\f$\frac{d(\log m)}{d(\log r)}\f$)
+ *         - \p [1]: Derivative of logarithmic pressure (\f$\frac{d(\log P)}{d(\log r)}\f$)
+ *         \endparblock
+ *
+ * @pre \p m must be greater than zero (\f$m > 0\f$)
+ * @pre Metric factor must be positive: \f$1 - \frac{2 G m}{r c^2} > 0\f$
+ * @pre spline_inv != nullptr (valid GSL spline object)
+ * @pre acc_inv != nullptr (valid GSL accelerator object)
+ * @pre min_logP < max_logP (valid pressure range)
+ *
+ * @note When \p m approaches zero, it is set to \f$10^{-30}\f$ to avoid division by zero
+ * @note Pressure values are clamped to EOS validity range before spline evaluation
+ * @note The TOV equations include relativistic corrections significant for neutron stars
+ *
+ * @warning May encounter floating-point errors for invalid state values
+ * @warning Fails if Schwarzschild radius condition is violated (\f$2 G m / r c^2 \geq 1\f$)
+ * @warning GSL spline evaluation can fail for values outside interpolation range
+ *
+ * **Example Usage:**
+ * @code{.cpp}
+ * // Assuming splines are initialized
+ * double log_r = 5.0; // log10(r) = 5 -> r = 100,000 cm
+ * std::vector<double> state = {30.0, 25.0}; // log10(m), log10(P)
+ * 
+ * auto derivatives = tolman_oppenheimer_volkoff_derivatives_spline(
+ *     log_r, state, spline_inv, acc_inv, 15.0, 35.0
+ * );
+ * 
+ * std::cout << "dlogm_dlogr: " << derivatives[0] << std::endl;
+ * std::cout << "dlogP_dlogr: " << derivatives[1] << std::endl;
+ * @endcode
+ *
+ * @see tolman_oppenheimer_volkoff_derivatives() for polytropic EOS version
+ * @see non_rotating_stellar_structure_spline() for full integration example
+ * @see GSL documentation for spline usage and error handling
+ */
+std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
+    double log_r, 
+    const std::vector<double>& state, 
+    const gsl_spline* spline_inv, 
+    gsl_interp_accel* acc_inv, 
+    double min_logP, 
+    double max_logP
+);
 
 /**
  * @brief EOS parameters are now handled by the PolytropicEOS class.

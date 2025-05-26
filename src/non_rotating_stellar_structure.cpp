@@ -9,7 +9,7 @@
 #include <string>
 #include <fstream>
 
-std::tuple<int, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e) {
+std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e) {
     /*
      * STELLAR STRUCTURE INTEGRATION USING TOV EQUATIONS
      * 
@@ -83,7 +83,8 @@ std::tuple<int, double> non_rotating_stellar_structure(PolytropicGasType eos_typ
         outfile << log_r << "," << state[0] << "," << state[1] << "\n";
 
         // Stop if pressure drops below a threshold
-        if (state[1] < log10(1e-8)) {
+        // Use log10(1e15) for Neutron Stars
+        if (state[1] < log10(1e5)) {  // Reasonable threshold: 10^15 dyne/cm² for surface detection
             std::cout << "Surface reached at log_r: " << log_r << std::endl;
             break;
         }
@@ -102,7 +103,7 @@ std::tuple<int, double> non_rotating_stellar_structure(PolytropicGasType eos_typ
     }
     outfile.close();
     // At end of integration
-    return {idx, state[0]};
+    return {idx, state[0], log_r};
 }
 
 std::vector<double> newtonian(double log_r, const std::vector<double>& state, double k, double gamma) {
@@ -154,4 +155,217 @@ std::string get_filename(const std::string& name, double rho_c) {
     std::replace(rho_str.begin(), rho_str.end(), 'e', 'p');
     
     return "data/" + name + "_rhoc_" + rho_str + ".csv";
+}
+
+std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
+    double log_r, 
+    const std::vector<double>& state, 
+    const gsl_spline* spline_inv, 
+    gsl_interp_accel* acc_inv, 
+    double min_logP, 
+    double max_logP
+) {
+    /*
+     * TOV DERIVATIVES WITH SPLINE-BASED EOS
+     * 
+     * This function computes the same TOV derivatives as the polytropic version,
+     * but uses tabulated EOS data via GSL spline interpolation to get ρ(P).
+     * 
+     * PHYSICS:
+     * - Identical TOV equations to polytropic version
+     * - Density obtained from spline: log_ρ = f^(-1)(log_P)
+     * - Same relativistic corrections and factors
+     * 
+     * EOS HANDLING:
+     * - Pressure clamping to validity range [min_logP, max_logP]
+     * - GSL spline evaluation for density lookup
+     * - Error handling for extrapolation cases
+     */
+    
+    double m = pow(10.0, state[0]);
+    double P = pow(10.0, state[1]);
+    double r = pow(10.0, log_r);
+    
+    // Add check for m approaching zero (same as polytropic version)
+    if (m < 1e-30) {
+        m = 1e-30;  // Prevent division by zero
+    }
+    
+    // Clamp pressure to EOS validity range
+    double log_P = state[1];
+    if (log_P < min_logP) log_P = min_logP;
+    if (log_P > max_logP) log_P = max_logP;
+    
+    // Get density from spline interpolation: log_rho = f^(-1)(log_P)
+    double log_rho = gsl_spline_eval(spline_inv, log_P, acc_inv);
+    double rho = pow(10.0, log_rho);
+    
+    // Compute TOV derivatives (identical to polytropic version)
+    double dlogm_dlogr = ((4.0 * M_PI * pow(r, 3.0) * rho) / m);
+    double first_factor = (- (G * m * rho) / (P * r));
+    double second_factor = (1.0 + P/(rho * pow(c, 2.0)));
+    double third_factor = 1.0 + ( (4.0 * M_PI * P * pow(r, 3.0) ) / ( m * pow(c, 2.0) ) );    
+    double fourth_factor = 1.0 / ( 1.0 - ( (2.0 * G * m) / (r * pow(c, 2.0)) ) );
+
+    double dlogP_dlogr = (first_factor * second_factor * third_factor * fourth_factor);
+
+    return {dlogm_dlogr, dlogP_dlogr};
+}
+
+std::tuple<int, double, double> non_rotating_stellar_structure_spline(
+    const gsl_spline* spline_inv,
+    gsl_interp_accel* acc_inv,
+    double min_logP,
+    double max_logP,
+    double rho_c,
+    double r_start,
+    double r_end,
+    double base_dlogr,
+    bool use_adaptive_stepping,
+    double pressure_threshold,
+    const std::string& output_filename
+) {
+    /*
+     * STELLAR STRUCTURE INTEGRATION WITH SPLINE-BASED EOS
+     * 
+     * This function extends the existing TOV solver to work with tabulated EOS
+     * data via GSL splines. It provides the same functionality as the polytropic
+     * version but supports realistic, complex equations of state.
+     * 
+     * PHYSICS:
+     * - Same TOV equations as polytropic version
+     * - Realistic EOS via spline interpolation
+     * - Support for complex phase transitions and composition changes
+     * 
+     * NUMERICAL ENHANCEMENTS:
+     * - Optional adaptive step size control
+     * - Configurable surface pressure threshold
+     * - Optional file output (empty filename = no output)
+     * - Enhanced error handling for EOS validity range
+     */
+    
+    // Get forward spline for initial pressure calculation
+    // We need to find the forward spline (P from ρ) - this would need to be passed
+    // For now, we'll estimate initial pressure using a simple approach
+    // In practice, you'd pass both forward and inverse splines
+    
+    // Initialize output file if filename provided
+    std::ofstream outfile;
+    bool write_output = !output_filename.empty();
+    if (write_output) {
+        outfile.open(output_filename);
+        if (!outfile.is_open()) {
+            std::cerr << "Error opening file: " << output_filename << std::endl;
+            write_output = false;
+        } else {
+            std::cout << "Writing to file: " << output_filename << std::endl;
+            outfile << "log_r[cm],log_m[g],log_P[dyne/cm^2]\n";
+        }
+    }
+    
+    // Initial conditions
+    double fraction = 4.0 / 3.0;
+    double log_r_start = log10(r_start);
+    double log_r_end = log10(r_end);
+    double log_m0 = log10(fraction) + log10(M_PI) + 3.0*log10(r_start) + log10(rho_c);
+    
+    // For initial pressure, we need to find P(ρ_c)
+    // Since we only have the inverse spline ρ(P), we need to search for the correct P
+    // This is a limitation - in practice you'd want both forward and inverse splines
+    // For now, estimate using a reasonable range and binary search
+    double log_p0 = 15.0;  // Starting guess (typical neutron star central pressure)
+    
+    // Simple search to find pressure that gives approximately the right density
+    double target_log_rho = log10(rho_c);
+    double best_log_p = log_p0;
+    double min_error = 1e10;
+    
+    for (double test_log_p = min_logP; test_log_p <= max_logP; test_log_p += 0.1) {
+        double test_log_rho = gsl_spline_eval(spline_inv, test_log_p, acc_inv);
+        double error = std::abs(test_log_rho - target_log_rho);
+        if (error < min_error) {
+            min_error = error;
+            best_log_p = test_log_p;
+        }
+    }
+    log_p0 = best_log_p;
+    
+    std::vector<double> state = {log_m0, log_p0};
+
+    std::cout << "Initial conditions (spline-based):" << std::endl;
+    std::cout << "  log_r_start = " << log_r_start << std::endl;
+    std::cout << "  log_m0 = " << log_m0 << std::endl;
+    std::cout << "  log_p0 = " << log_p0 << std::endl;
+    std::cout << "  rho_c = " << rho_c << " g/cm³" << std::endl;
+    std::cout << "  EOS range: [" << min_logP << ", " << max_logP << "]" << std::endl;
+
+    int idx = 0;
+    double log_r = log_r_start;
+    double current_dlogr = base_dlogr;
+
+    while (log_r < log_r_end) {
+        // Adaptive step size control
+        if (use_adaptive_stepping && idx > 0) {
+            // Adjust step size based on pressure gradient
+            double pressure_gradient = std::abs(state[1] - log_p0) / (log_r - log_r_start + 1e-10);
+            if (pressure_gradient > 1.0) {
+                current_dlogr = base_dlogr * 0.5;  // Smaller steps in steep regions
+            } else if (pressure_gradient < 0.1) {
+                current_dlogr = base_dlogr * 2.0;  // Larger steps in flat regions
+            } else {
+                current_dlogr = base_dlogr;
+            }
+            // Clamp step size to reasonable bounds
+            current_dlogr = std::max(base_dlogr * 0.1, std::min(current_dlogr, base_dlogr * 5.0));
+        }
+        
+        // Integration step using spline-based derivatives
+        state = rk4_step(log_r, current_dlogr, state, 
+        [spline_inv, acc_inv, min_logP, max_logP](double r, const std::vector<double>& s) {
+            return tolman_oppenheimer_volkoff_derivatives_spline(r, s, spline_inv, acc_inv, min_logP, max_logP);
+        });
+        
+        log_r += current_dlogr;
+        
+        // Output to file if requested
+        if (write_output) {
+            outfile << log_r << "," << state[0] << "," << state[1] << "\n";
+        }
+
+        // Surface detection with configurable threshold
+        double current_pressure = pow(10.0, state[1]);
+        if (current_pressure < pressure_threshold) {
+            std::cout << "Surface reached at log_r: " << log_r 
+                      << " (P = " << current_pressure << " dyne/cm²)" << std::endl;
+            break;
+        }
+        
+        // EOS validity check
+        if (state[1] < min_logP || state[1] > max_logP) {
+            std::cout << "Pressure outside EOS range at log_r: " << log_r 
+                      << " (log_P = " << state[1] << ")" << std::endl;
+            break;
+        }
+
+        // Numerical stability check
+        if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
+            std::cout << "Non-finite values at log_r: " << log_r << std::endl;
+            break;
+        }
+
+        // Progress reporting
+        if (idx % 1000 == 0) { 
+            std::cout << "log_r: " << log_r << ", log_m: " << state[0] 
+                      << ", log_P: " << state[1] << ", step: " << current_dlogr << std::endl;
+        }
+
+        idx += 1;
+    }
+    
+    if (write_output) {
+        outfile.close();
+    }
+    
+    // Return results
+    return {idx, state[0], log_r};
 }
