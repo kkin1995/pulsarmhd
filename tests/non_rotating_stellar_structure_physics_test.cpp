@@ -6,6 +6,8 @@
 #include <cmath>
 #include <vector>
 #include <tuple>
+#include <gsl/gsl_spline.h>
+#include <gsl/gsl_errno.h>
 
 // Test fixture for physics validation
 class StellarPhysicsTest : public ::testing::Test {
@@ -24,6 +26,61 @@ protected:
         // Test tolerances for physics
         mass_tolerance = 0.3; // 30% tolerance for stellar masses
         radius_tolerance = 0.5; // 50% tolerance for stellar radii
+        
+        // Set up test EOS data for spline-based physics tests
+        setupRealisticEOSData();
+    }
+    
+    void TearDown() override {
+        // Cleanup GSL splines if allocated
+        if (test_spline_inv) {
+            gsl_spline_free(test_spline_inv);
+            test_spline_inv = nullptr;
+        }
+        if (test_acc_inv) {
+            gsl_interp_accel_free(test_acc_inv);
+            test_acc_inv = nullptr;
+        }
+    }
+    
+    // Setup realistic EOS data for physics tests
+    void setupRealisticEOSData() {
+        // Create more realistic neutron star EOS data
+        test_log_rho.clear();
+        test_log_P.clear();
+        
+        // Use a more sophisticated EOS that transitions from non-relativistic to relativistic
+        for (int i = 0; i < 100; i++) {
+            double log_rho = 13.0 + 6.0 * i / 99.0; // log10(rho) from 13 to 19
+            double rho = std::pow(10.0, log_rho);
+            
+            // Transition from non-relativistic to relativistic neutron EOS
+            double P;
+            if (rho < 1e15) {
+                // Non-relativistic regime: P = k * rho^(5/3)
+                double k_nr = 5.3802e9;
+                P = k_nr * std::pow(rho, 5.0/3.0);
+            } else {
+                // Relativistic regime: P = k * rho^(4/3)
+                double k_r = 1.2293e15;
+                P = k_r * std::pow(rho, 4.0/3.0);
+            }
+            
+            double log_P = std::log10(P);
+            test_log_rho.push_back(log_rho);
+            test_log_P.push_back(log_P);
+        }
+        
+        // Set up GSL spline for inverse EOS
+        test_acc_inv = gsl_interp_accel_alloc();
+        test_spline_inv = gsl_spline_alloc(gsl_interp_steffen, test_log_P.size());
+        
+        if (gsl_spline_init(test_spline_inv, test_log_P.data(), test_log_rho.data(), test_log_P.size()) != GSL_SUCCESS) {
+            throw std::runtime_error("Failed to initialize physics test spline");
+        }
+        
+        test_min_logP = test_log_P.front();
+        test_max_logP = test_log_P.back();
     }
 
     // Helper to convert final log values to physical units
@@ -62,6 +119,12 @@ protected:
     double chandrasekhar_mass, neutron_star_max_mass;
     double neutron_star_typical_radius, white_dwarf_typical_radius;
     double mass_tolerance, radius_tolerance;
+    
+    // Test EOS data for spline-based physics tests
+    std::vector<double> test_log_rho, test_log_P;
+    gsl_spline *test_spline_inv = nullptr;
+    gsl_interp_accel *test_acc_inv = nullptr;
+    double test_min_logP, test_max_logP;
 };
 
 // ============================================================================
@@ -340,6 +403,225 @@ TEST_F(StellarPhysicsTest, SurfaceDetection) {
     EXPECT_LT(steps, 2000) << "Should detect surface before too many steps";
     EXPECT_GT(steps, 10) << "Should have multiple integration steps";
     EXPECT_TRUE(std::isfinite(final_mass)) << "Final mass should be finite";
+}
+
+// ============================================================================
+// SPLINE-BASED STELLAR STRUCTURE PHYSICS TESTS
+// ============================================================================
+
+// Test S.1: Spline-based Neutron Star Models
+TEST_F(StellarPhysicsTest, SplineBasedNeutronStarPhysics) {
+    // Test spline-based solver with realistic neutron star parameters
+    double rho_c = 1e15; // Typical neutron star central density
+    double r_start = 1.0;
+    double r_end = 1e6;
+    double base_dlogr = 0.01;
+    
+    auto result = non_rotating_stellar_structure_spline(
+        test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+        rho_c, r_start, r_end, base_dlogr, true, 1e-8);
+    
+    int steps = std::get<0>(result);
+    double log_mass_final = std::get<1>(result);
+    double log_radius_final = std::get<2>(result);
+    
+    // Convert to physical units
+    double mass = std::pow(10.0, log_mass_final);
+    double radius = std::pow(10.0, log_radius_final);
+    double mass_solar = mass / solar_mass;
+    double radius_km = radius / 1e5;
+    
+    // Physics checks for neutron stars
+    EXPECT_GT(steps, 0) << "Integration should complete";
+    EXPECT_GT(mass_solar, 0.5) << "Neutron star mass should be > 0.5 M☉";
+    EXPECT_LT(mass_solar, 3.0) << "Neutron star mass should be < 3.0 M☉";
+    EXPECT_GT(radius_km, 8.0) << "Neutron star radius should be > 8 km";
+    EXPECT_LT(radius_km, 20.0) << "Neutron star radius should be < 20 km";
+    
+    // Compactness check (GM/Rc² should be reasonable for neutron stars)
+    double compactness = 2.95 * mass_solar / radius_km; // Using GM/Rc² in geometric units
+    EXPECT_GT(compactness, 0.1) << "Neutron star should be reasonably compact";
+    EXPECT_LT(compactness, 0.5) << "Compactness should be below black hole limit";
+}
+
+TEST_F(StellarPhysicsTest, SplineBasedMassRadiusRelation) {
+    // Test mass-radius relation for different central densities
+    std::vector<double> central_densities = {5e14, 1e15, 2e15, 5e15, 1e16};
+    std::vector<double> masses, radii;
+    
+    for (double rho_c : central_densities) {
+        auto result = non_rotating_stellar_structure_spline(
+            test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+            rho_c, 1.0, 1e6, 0.02, true, 1e-8);
+        
+        if (std::get<0>(result) > 0) { // If integration completed
+            double mass = std::pow(10.0, std::get<1>(result));
+            double radius = std::pow(10.0, std::get<2>(result));
+            
+            masses.push_back(mass / solar_mass);
+            radii.push_back(radius / 1e5); // Convert to km
+            
+            // Basic sanity checks
+            EXPECT_GT(mass / solar_mass, 0.1) << "Mass should be reasonable for density " << rho_c;
+            EXPECT_GT(radius / 1e5, 5.0) << "Radius should be reasonable for density " << rho_c;
+        }
+    }
+    
+    EXPECT_GT(masses.size(), 2) << "Should successfully compute multiple stellar models";
+    
+    // Check general trend: higher central density should lead to higher mass (up to maximum mass)
+    bool mass_increases = false;
+    for (size_t i = 1; i < masses.size() - 1; i++) {
+        if (masses[i] > masses[i-1]) {
+            mass_increases = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(mass_increases) << "Mass should increase with central density (at least initially)";
+}
+
+TEST_F(StellarPhysicsTest, SplineBasedEOSConsistency) {
+    // Test that spline-based solver properly uses the EOS throughout integration
+    double rho_c = 1e15;
+    
+    auto result = non_rotating_stellar_structure_spline(
+        test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+        rho_c, 1.0, 1e6, 0.02, true, 1e-8);
+    
+    // The fact that integration completes without throwing means EOS lookup worked
+    EXPECT_GT(std::get<0>(result), 0) << "Integration should complete successfully";
+    
+    // Test EOS consistency at a few points within the range
+    for (double log_P = test_min_logP + 1.0; log_P < test_max_logP - 1.0; log_P += 2.0) {
+        double log_rho = gsl_spline_eval(test_spline_inv, log_P, test_acc_inv);
+        
+        EXPECT_GE(log_rho, test_log_rho.front()) << "Interpolated density should be in range";
+        EXPECT_LE(log_rho, test_log_rho.back()) << "Interpolated density should be in range";
+        EXPECT_TRUE(std::isfinite(log_rho)) << "EOS lookup should give finite result";
+    }
+}
+
+// Test S.2: Comparison with Polytropic Models
+TEST_F(StellarPhysicsTest, SplineVsPolytropicPhysicsComparison) {
+    // Compare spline-based and polytropic solvers for neutron stars
+    double rho_c = 1e15;
+    double r_start = 10.0;
+    double r_end = 1e6;
+    double dlogr = 0.05;
+    
+    // Spline-based solver
+    auto spline_result = non_rotating_stellar_structure_spline(
+        test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+        rho_c, r_start, r_end, dlogr, false, 1e-8); // Fixed stepping for comparison
+    
+    // Equivalent polytropic solver
+    auto polytropic_result = non_rotating_stellar_structure(
+        PolytropicGasType::NEUTRON_RELATIVISTIC, rho_c, r_start, r_end, dlogr, 2.0);
+    
+    // Extract physical properties
+    double spline_mass = std::pow(10.0, std::get<1>(spline_result)) / solar_mass;
+    double spline_radius = std::pow(10.0, std::get<2>(spline_result)) / 1e5;
+    double polytropic_mass = std::pow(10.0, std::get<1>(polytropic_result)) / solar_mass;
+    
+    // Both should give reasonable neutron star properties
+    EXPECT_GT(spline_mass, 0.5) << "Spline solver should give reasonable neutron star mass";
+    EXPECT_GT(polytropic_mass, 0.5) << "Polytropic solver should give reasonable neutron star mass";
+    EXPECT_GT(spline_radius, 8.0) << "Spline solver should give reasonable neutron star radius";
+    
+    // Results should be comparable (within factor of 2) since test EOS is piecewise polytropic
+    double mass_ratio = spline_mass / polytropic_mass;
+    EXPECT_GT(mass_ratio, 0.5) << "Spline and polytropic masses should be comparable";
+    EXPECT_LT(mass_ratio, 2.0) << "Spline and polytropic masses should be comparable";
+}
+
+TEST_F(StellarPhysicsTest, SplineBasedRelativisticEffects) {
+    // Test that spline-based solver captures relativistic effects
+    double rho_c_low = 1e14;  // Lower density
+    double rho_c_high = 1e16; // Higher density where relativistic effects dominate
+    
+    auto result_low = non_rotating_stellar_structure_spline(
+        test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+        rho_c_low, 1.0, 1e6, 0.02, true, 1e-8);
+    
+    auto result_high = non_rotating_stellar_structure_spline(
+        test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+        rho_c_high, 1.0, 1e6, 0.02, true, 1e-8);
+    
+    if (std::get<0>(result_low) > 0 && std::get<0>(result_high) > 0) {
+        double mass_low = std::pow(10.0, std::get<1>(result_low));
+        double mass_high = std::pow(10.0, std::get<1>(result_high));
+        double radius_low = std::pow(10.0, std::get<2>(result_low));
+        double radius_high = std::pow(10.0, std::get<2>(result_high));
+        
+        // Higher central density should generally give higher mass
+        EXPECT_GT(mass_high, mass_low * 0.8) << "Higher density should give higher mass";
+        
+        // Higher central density typically gives smaller radius due to relativity
+        EXPECT_LT(radius_high, radius_low * 1.2) << "Higher density should give smaller or similar radius";
+        
+        // Both should be physically reasonable
+        EXPECT_GT(mass_low / solar_mass, 0.1) << "Low density mass should be reasonable";
+        EXPECT_GT(mass_high / solar_mass, 0.1) << "High density mass should be reasonable";
+    }
+}
+
+// Test S.3: Edge Cases and Robustness for Spline-based Solver
+TEST_F(StellarPhysicsTest, SplineBasedExtremeCases) {
+    // Test spline-based solver at edge cases
+    
+    // Very high central density (near maximum of EOS range)
+    double rho_c_max = std::pow(10.0, test_log_rho.back() - 0.5); // Just below maximum
+    
+    EXPECT_NO_THROW({
+        auto result = non_rotating_stellar_structure_spline(
+            test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+            rho_c_max, 1.0, 1e6, 0.05, true, 1e-8);
+        
+        if (std::get<0>(result) > 0) {
+            double mass = std::pow(10.0, std::get<1>(result));
+            EXPECT_TRUE(std::isfinite(mass)) << "Mass should be finite for extreme density";
+            EXPECT_GT(mass / solar_mass, 0.1) << "Mass should be reasonable for extreme density";
+        }
+    }) << "Spline solver should handle extreme densities gracefully";
+    
+    // Very low central density (near minimum of EOS range)
+    double rho_c_min = std::pow(10.0, test_log_rho.front() + 0.5); // Just above minimum
+    
+    EXPECT_NO_THROW({
+        auto result = non_rotating_stellar_structure_spline(
+            test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+            rho_c_min, 1.0, 1e7, 0.05, true, 1e-8);
+        
+        EXPECT_GT(std::get<0>(result), 0) << "Should complete integration for low density";
+    }) << "Spline solver should handle low densities";
+}
+
+TEST_F(StellarPhysicsTest, SplineBasedNumericalStability) {
+    // Test numerical stability with different step sizes
+    double rho_c = 1e15;
+    std::vector<double> step_sizes = {0.05, 0.02, 0.01};
+    std::vector<double> final_masses;
+    
+    for (double dlogr : step_sizes) {
+        auto result = non_rotating_stellar_structure_spline(
+            test_spline_inv, test_acc_inv, test_min_logP, test_max_logP,
+            rho_c, 1.0, 1e6, dlogr, false, 1e-8); // Fixed stepping for comparison
+        
+        if (std::get<0>(result) > 0) {
+            double mass = std::pow(10.0, std::get<1>(result));
+            final_masses.push_back(mass);
+            
+            EXPECT_TRUE(std::isfinite(mass)) << "Mass should be finite for step size " << dlogr;
+        }
+    }
+    
+    // Results should converge as step size decreases
+    if (final_masses.size() >= 2) {
+        for (size_t i = 1; i < final_masses.size(); i++) {
+            double rel_diff = std::abs(final_masses[i] - final_masses[i-1]) / final_masses[i-1];
+            EXPECT_LT(rel_diff, 0.1) << "Results should converge with smaller step size";
+        }
+    }
 }
 
 // Main function is provided by gtest_main library 
