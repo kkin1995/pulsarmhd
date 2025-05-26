@@ -206,7 +206,7 @@ class DataValidation:
     min_mass_solar: float = 0.01      # Minimum physical mass (solar masses)
     max_mass_solar: float = 10.0      # Maximum reasonable mass (solar masses)
     min_radius_km: float = 1.0        # Minimum physical radius (km)
-    max_radius_km: float = 100.0      # Maximum reasonable radius (km)
+    max_radius_km: float = 2000.0     # Maximum reasonable radius (km) - increased for relativistic polytrope
     min_density_log: float = 10.0     # Minimum log density (g/cm³)
     max_density_log: float = 20.0     # Maximum log density (g/cm³)
     
@@ -276,8 +276,8 @@ class PerformanceConfig:
 @dataclass
 class PlotConfig:
     """Configuration for plotting operations."""
-    data_directory: str = "../data/"
-    output_directory: str = "../plots/"
+    data_directory: str = "./data/"
+    output_directory: str = "./plots/"
     style: PlotStyle = field(default_factory=PlotStyle)
     validation: DataValidation = field(default_factory=DataValidation)
     performance: PerformanceConfig = field(default_factory=PerformanceConfig)
@@ -975,14 +975,14 @@ VALIDATION LEVELS:
         
         # Output options
         subparser.add_argument('--config', help='YAML configuration file')
-        subparser.add_argument('--output-dir', default='../plots/', help='Output directory (default: ../plots/)')
+        subparser.add_argument('--output-dir', default='./plots/', help='Output directory (default: ./plots/)')
         subparser.add_argument('--output-prefix', default='', help='Output filename prefix')
         subparser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                               default='INFO', help='Logging level (default: INFO)')
         subparser.add_argument('--stats', action='store_true', help='Display summary statistics')
         
         # Data options
-        subparser.add_argument('--data-dir', default='../data/', help='Data directory (default: ../data/)')
+        subparser.add_argument('--data-dir', default='./data/', help='Data directory (default: ./data/)')
     
     return parser
 

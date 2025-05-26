@@ -2,8 +2,8 @@
 # Advanced configuration for stellar structure visualization
 
 # Data and output directories
-data_directory: "../data/"
-output_directory: "../plots/"
+data_directory: "/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/data"
+output_directory: "/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/plots"
 
 # Plot styling and themes
 style:
@@ -20,7 +20,7 @@ style:
   legend_location: "best"
   font_family: "serif"   # serif, sans-serif, monospace
   line_width: 2.0
-  marker_size: 30.0
+  marker_size: 10.0
   alpha: 0.7
   
   # EOS-specific colors (can be overridden by theme)

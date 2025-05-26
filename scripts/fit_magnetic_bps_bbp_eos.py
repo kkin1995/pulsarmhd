@@ -215,9 +215,9 @@ hybrid_log_P = hybrid_log_P[sort_idx]
 
 # ---
 
-rho_neutron_polytrope = np.linspace(1e15, 1e18, 100)
-neutron_polytrope_k = 1.2293e15 # CGS
-neutron_polytrope_gamma = 4.0 / 3.0
+rho_neutron_polytrope = np.linspace(1e12, 1e15, 100)
+neutron_polytrope_k = 5.3802e9 # CGS
+neutron_polytrope_gamma = 5.0 / 3.0
 neutron_polytrope_P = neutron_polytrope_k * (rho_neutron_polytrope ** neutron_polytrope_gamma)
 
 log_neutron_polytrope_rho = np.log10(rho_neutron_polytrope)[1:]
@@ -315,7 +315,7 @@ eos_data = pd.DataFrame({
 })
 
 # Suggested filename
-filename = "data/unified_eos_magnetic_BPS-BBP-Polytrope_B_001.csv"
+filename = "data/unified_eos_magnetic_BPS-BBP-NR-NS-Polytrope_B_001.csv"
 eos_data.to_csv(filename, index=False)
 print(f"Exported unified EOS to {filename}")
 
@@ -343,7 +343,7 @@ plt.grid(True)
 # plt.xlim(12, 17)
 # plt.ylim(30, 38)
 
-plt.savefig("unified_eos_magnetic_BPS-BBP-Polytrope_B_001.png")
+plt.savefig("unified_eos_magnetic_BPS-BBP-NR-NS-Polytrope_B_001.png")
 
 # 11. Calculate and verify physical properties
 # Adiabatic index
@@ -376,4 +376,4 @@ plt.ylim(-0.5, 10.0)
 plt.title("Adiabatic Index in Unified EOS")
 plt.legend()
 plt.grid(True)
-plt.savefig("unified_eos_magnetic_BPS-BBP-Polytrope_B_001_adiabatic_index.png")
+plt.savefig("unified_eos_magnetic_BPS-BBP-NR-NS-Polytrope_B_001_adiabatic_index.png")
