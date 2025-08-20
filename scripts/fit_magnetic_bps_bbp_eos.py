@@ -123,6 +123,7 @@ log_rho_bbp = log_rho_bbp[valid_bbp_mask]
 log_P_bbp = log_P_bbp[valid_bbp_mask]
 
 # FITTING CUBIC SPLINES TO FIND POINT OF CLOSEST APPROACH OF BOTH EOS's
+print("CONNECTING MAGNETIC BPS AND BBP EOS's")
 log_rho_min = np.max([np.min(log_rho_bps), np.min(log_rho_bbp)])
 log_rho_max = np.min([np.max(log_rho_bps), np.max(log_rho_bbp)])
 log_rho_common = np.linspace(log_rho_min, log_rho_max, 1000)
@@ -157,8 +158,8 @@ def psi0(t):
 def psi1(t):
     return (t ** 3) - (t ** 2)
 
-delta_1 = 0.2
-delta_2 = 0.35
+delta_1 = 0.5
+delta_2 = 0.5
 
 # Non-Magnetic BPS
 # delta_1 = 0.0001
@@ -181,6 +182,9 @@ f_1_prime = (f_bps(x_1 + delta) - f_bps(x_1)) / delta
 # Since we're near the end of data range, use backward difference to be safe
 f_2_prime = (f_bbp(x_2) - f_bbp(x_2 - delta)) / delta
 
+f_1_prime, f_2_prime = fritsch_carlson_monotonic_slopes(
+    x_1, x_2, f_1, f_2, f_1_prime, f_2_prime)
+
 def cubic_spline(x, f_1, f_2, f_1_prime, f_2_prime):
     t = (x - x_1) / (x_2 - x_1)
     first_term = f_1 * phi0(t)
@@ -190,9 +194,21 @@ def cubic_spline(x, f_1, f_2, f_1_prime, f_2_prime):
 
     return first_term + second_term + third_term + fourth_term
 
+def cubic_spline_general(x, x_start, x_end, f_1, f_2, f_1_prime, f_2_prime):
+    """Generalized cubic Hermite spline that works for any transition."""
+    h_local = x_end - x_start
+    t = (x - x_start) / h_local
+    first_term = f_1 * phi0(t)
+    second_term = f_2 * phi1(t)
+    third_term = h_local * f_1_prime * psi0(t)
+    fourth_term = h_local * f_2_prime * psi1(t)
+    return first_term + second_term + third_term + fourth_term
+
 # Create dense grid in transition region
 transition_x = np.linspace(x_1, x_2, 100)
-transition_y = np.array([cubic_spline(x, f_1, f_2, f_1_prime, f_2_prime) for x in transition_x])
+# transition_y = np.array([cubic_spline(x, f_1, f_2, f_1_prime, f_2_prime) for x in transition_x])
+transition_y = np.array([cubic_spline_general(x, x_1, x_2, f_1, f_2, f_1_prime, f_2_prime) 
+                        for x in transition_x])
 
 # Select BPS data below transition
 bps_mask = unique_log_rho_bps < x_1
@@ -214,7 +230,7 @@ hybrid_log_rho = hybrid_log_rho[sort_idx]
 hybrid_log_P = hybrid_log_P[sort_idx]
 
 # ---
-
+print("CONNECTING BBP AND POLYTROPE EOS's")
 rho_neutron_polytrope = np.linspace(1e12, 1e15, 100)
 neutron_polytrope_k = 5.3802e9 # CGS
 neutron_polytrope_gamma = 5.0 / 3.0
@@ -236,6 +252,8 @@ if log_rho_hybrid_max >= log_rho_poly_min:
     log_P_poly_overlap = np.log10(neutron_polytrope_k * (10**log_rho_overlap)**neutron_polytrope_gamma)
     
     distance_hybrid_poly = np.abs(log_P_hybrid_overlap - log_P_poly_overlap)
+
+
     idx_min_distance = np.argmin(distance_hybrid_poly)
     log_rho_transition = log_rho_overlap[idx_min_distance]
     
@@ -248,11 +266,12 @@ else:
     print(f"Using midpoint for transition: log(rho) = {log_rho_transition:.4f}")
 
 # 3. Define transition region
-poly_delta_1 = 0.1  # Width before transition
-poly_delta_2 = 0.1  # Width after transition
+poly_delta_1 = 0.8  # Width before transition
+poly_delta_2 = 0.8  # Width after transition
 mid_rho = (log_rho_hybrid_max + log_rho_poly_min) / 2
-poly_x_1 = log_rho_hybrid_max - poly_delta_1
-poly_x_2 = log_rho_poly_min + poly_delta_2
+poly_x_1 = log_rho_transition - poly_delta_1
+poly_x_2 = log_rho_transition + poly_delta_2
+
 poly_h = poly_x_2 - poly_x_1  # Transition width
 
 # 4. Calculate function values at transition boundaries
@@ -265,12 +284,12 @@ delta = 0.001  # Small step for numerical derivative
 poly_f_1_prime = (f_hybrid(poly_x_1 + delta) - f_hybrid(poly_x_1)) / delta
 poly_f_2_prime = neutron_polytrope_gamma  # Analytical derivative for polytrope
 
-# print(f"Before adjustment - Derivatives: {poly_f_1_prime:.4f}, {poly_f_2_prime:.4f}")
+print(f"Before adjustment - Derivatives: {poly_f_1_prime:.4f}, {poly_f_2_prime:.4f}")
 
-# poly_f_1_prime, poly_f_2_prime = fritsch_carlson_monotonic_slopes(
-#     poly_x_1, poly_x_2, poly_f_1, poly_f_2, poly_f_1_prime, poly_f_2_prime)
+poly_f_1_prime, poly_f_2_prime = fritsch_carlson_monotonic_slopes(
+    poly_x_1, poly_x_2, poly_f_1, poly_f_2, poly_f_1_prime, poly_f_2_prime)
 
-# print(f"After adjustment - Derivatives: {poly_f_1_prime:.4f}, {poly_f_2_prime:.4f}")
+print(f"After adjustment - Derivatives: {poly_f_1_prime:.4f}, {poly_f_2_prime:.4f}")
 
 # Add this right before creating the transition region
 print("\nDEBUGGING BBP-POLYTROPE TRANSITION:")
@@ -286,9 +305,13 @@ poly_transition_x = np.linspace(poly_x_1, poly_x_2, 100)
 #                                            poly_f_1_prime, poly_f_2_prime) 
 #                               for x in poly_transition_x])
 
-poly_transition_y = np.array([linear_interpolation(x, poly_x_1, poly_x_2, 
-                                                  poly_f_1, poly_f_2) 
-                              for x in poly_transition_x])
+# poly_transition_y = np.array([linear_interpolation(x, poly_x_1, poly_x_2, 
+#                                                   poly_f_1, poly_f_2) 
+#                               for x in poly_transition_x])
+poly_transition_y = np.array([cubic_spline_general(x, poly_x_1, poly_x_2, 
+                                                  poly_f_1, poly_f_2, 
+                                                  poly_f_1_prime, poly_f_2_prime) 
+                             for x in poly_transition_x])
 
 # 7. Select data for final unified EOS
 hybrid_mask = hybrid_log_rho < poly_x_1

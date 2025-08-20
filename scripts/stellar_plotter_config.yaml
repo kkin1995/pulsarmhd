@@ -51,9 +51,12 @@ validation:
   min_mass_solar: 0.01    # Minimum mass in solar masses
   max_mass_solar: 10.0    # Maximum mass in solar masses
   min_radius_km: 1.0      # Minimum radius in km
-  max_radius_km: 100.0    # Maximum radius in km
+  max_radius_km: 50.0    # Maximum radius in km
   min_density_log: 10.0   # Minimum log10(density) in g/cm³
   max_density_log: 20.0   # Maximum log10(density) in g/cm³
+  skip_r_end_artifacts: true
+  r_end_km: 1000.0
+  r_end_tolerance_km: 1.0
 
 # Performance optimization settings
 performance:

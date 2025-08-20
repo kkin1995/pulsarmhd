@@ -209,6 +209,9 @@ class DataValidation:
     max_radius_km: float = 2000.0     # Maximum reasonable radius (km) - increased for relativistic polytrope
     min_density_log: float = 10.0     # Minimum log density (g/cm³)
     max_density_log: float = 20.0     # Maximum log density (g/cm³)
+    skip_r_end_artifacts: bool = True       # enable by default
+    r_end_km: float = 1000.0                # C++ uses r_end = 1e8 cm => 1000 km
+    r_end_tolerance_km: float = 1.0         # how close to 1000 km counts as "ended at r_end"
     
     def validate_model(self, model: StellarModel) -> Tuple[bool, List[str]]:
         """
@@ -354,6 +357,47 @@ class ConfigManager:
             config.data_directory = config_data['data_directory']
         if 'output_directory' in config_data:
             config.output_directory = config_data['output_directory']
+
+        # Validation block
+        if 'validation' in config_data and config_data['validation'] is not None:
+            v = config_data['validation']
+            for key in ['min_mass_solar','max_mass_solar','min_radius_km','max_radius_km',
+                        'min_density_log','max_density_log',
+                        'skip_r_end_artifacts','r_end_km','r_end_tolerance_km']:
+                if key in v:
+                    setattr(config.validation, key, v[key])
+
+        # Style block (optional but handy)
+        if 'style' in config_data and config_data['style'] is not None:
+            s = config_data['style']
+            if 'theme' in s:               config.style.theme = s['theme']
+            if 'figure_size' in s:         config.style.figure_size = tuple(s['figure_size'])
+            if 'dpi' in s:                 config.style.dpi = s['dpi']
+            if 'grid' in s:                config.style.grid = bool(s['grid'])
+            if 'grid_alpha' in s:          config.style.grid_alpha = float(s['grid_alpha'])
+            if 'legend_location' in s:     config.style.legend_location = s['legend_location']
+            if 'font_family' in s:         config.style.font_family = s['font_family']
+            if 'line_width' in s:          config.style.line_width = float(s['line_width'])
+            if 'marker_size' in s:         config.style.marker_size = float(s['marker_size'])
+            if 'alpha' in s:               config.style.alpha = float(s['alpha'])
+            if 'colors' in s and isinstance(s['colors'], dict):
+                config.style.colors.update(s['colors'])
+            if 'markers' in s and isinstance(s['markers'], dict):
+                config.style.markers.update(s['markers'])
+            if 'line_styles' in s and isinstance(s['line_styles'], dict):
+                config.style.line_styles.update(s['line_styles'])
+
+        # EOS file patterns (optional override)
+        if 'eos_patterns' in config_data and isinstance(config_data['eos_patterns'], dict):
+            config.eos_patterns.update(config_data['eos_patterns'])
+
+        # Performance (optional)
+        if 'performance' in config_data and config_data['performance'] is not None:
+            p = config_data['performance']
+            if 'enable_parallel_loading' in p:
+                config.performance.enable_parallel_loading = bool(p['enable_parallel_loading'])
+            if 'chunk_size' in p:
+                config.performance.chunk_size = int(p['chunk_size'])
             
         return config
     
@@ -498,6 +542,27 @@ class EOSDataProcessor:
             mass_solar = 10**last_mass_log / 1.989e33  # grams to solar masses
             radius_km = 10**last_radius_log / 1e5      # cm to km
             
+            if self.config.validation and getattr(self.config.validation, 'skip_r_end_artifacts', False):
+                r_end_km = getattr(self.config.validation, 'r_end_km', 1000.0)
+                tol_km  = getattr(self.config.validation, 'r_end_tolerance_km', 1.0)
+
+                # quick geometric artifact test
+                ended_at_r_end = abs(radius_km - r_end_km) <= tol_km
+
+                # optional: strengthen the decision if pressure column is present
+                if 'log_P[dyne/cm^2]' in df.columns:
+                    last_lp = float(df['log_P[dyne/cm^2]'].iloc[-1])
+                    min_lp  = float(df['log_P[dyne/cm^2]'].min())
+                    # if we ended at the very last step without ever reaching the true surface,
+                    # the final pressure typically isn't the minimum attainable by the EOS trace
+                    # (small tolerance in log10 space)
+                    not_at_surface = not np.isclose(last_lp, min_lp, atol=5e-4)
+                    ended_at_r_end = ended_at_r_end or not_at_surface and (radius_km >= r_end_km - tol_km)
+
+                if ended_at_r_end:
+                    self.logger.warning(f"{os.path.basename(filepath)} ended at r_end≈{r_end_km:.0f} km; skipping.")
+                    return None
+
             # Parse central density
             central_density = self.parse_central_density(filepath, eos_type)
             if central_density is None:
@@ -737,16 +802,38 @@ class StellarPlotter:
         """
         plt.figure(figsize=self.config.style.figure_size)
         
+        # Always define a cap (∞ if no validation/max set)
+        if getattr(self.config, "validation", None) and hasattr(self.config.validation, "max_radius_km"):
+            radius_cap = float(self.config.validation.max_radius_km)
+        else:
+            radius_cap = float("inf")
+
         for dataset in datasets:
             if not dataset.models:
                 self.logger.warning(f"No models in dataset {dataset.eos_type}")
                 continue
             
+            # filter out unphysical/undesired large-radius points (e.g., 800+ km)
+            models_kept = [m for m in dataset.models if m.radius_km <= radius_cap]
+            dropped = len(dataset.models) - len(models_kept)
+            if dropped > 0:
+                self.logger.info(f"{dataset.eos_type}: dropped {dropped} models with R > {radius_cap} km")
+
+            if not models_kept:
+                self.logger.warning(f"No models to plot after radius filter for {dataset.eos_type}")
+                continue
+
+            # sort by central density for a clean curve
+            models_sorted = sorted(models_kept, key=lambda m: m.log_central_density)
+            radii  = [m.radius_km  for m in models_sorted]
+            masses = [m.mass_solar for m in models_sorted]
+
             style = self._get_plot_style(dataset.eos_type)
             label = dataset.eos_type.replace('_', ' ').title()
-            
-            plt.scatter(dataset.radii, dataset.masses, 
-                       label=label, **style)
+
+            # points with legend label
+            plt.scatter(radii, masses, label=label, marker=style['marker'],
+                    s=style['s'], alpha=style['alpha'], color=style['color'])
         
         plt.xlabel('Radius (km)', fontsize=12)
         plt.ylabel('Mass (Solar Masses)', fontsize=12)

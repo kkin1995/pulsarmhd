@@ -81,6 +81,13 @@ const double c = 2.99792458e10;  // speed of light in CGS units
  * @see PolytropicEOS class for EOS parameter calculation
  */
 
+struct TovResult {
+    int steps;
+    double log10_m_surface;
+    double log10_r_surface;
+    bool found_surface;
+};
+
 /**
  * @brief Solves the stellar structure equations for non-rotating compact objects.
  *
@@ -312,7 +319,7 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
  * @see tolman_oppenheimer_volkoff_derivatives() for TOV equation details
  * @see GSL documentation for spline initialization and management
  */
-std::tuple<int, double, double> non_rotating_stellar_structure_spline(
+TovResult non_rotating_stellar_structure_spline(
     const gsl_spline* spline_inv,
     gsl_interp_accel* acc_inv,
     double min_logP,
@@ -321,9 +328,9 @@ std::tuple<int, double, double> non_rotating_stellar_structure_spline(
     double r_start,
     double r_end,
     double base_dlogr,
-    bool use_adaptive_stepping = true,
-    double pressure_threshold = 1e-8,
-    const std::string& output_filename = ""
+    bool use_adaptive_stepping,
+    double pressure_threshold,
+    const std::string& output_filename
 );
 
 /**

@@ -9,6 +9,10 @@
 #include <string>
 #include <fstream>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e) {
     /*
      * STELLAR STRUCTURE INTEGRATION USING TOV EQUATIONS
@@ -83,8 +87,8 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
         outfile << log_r << "," << state[0] << "," << state[1] << "\n";
 
         // Stop if pressure drops below a threshold
-        // Use log10(1e15) for Neutron Stars
-        if (state[1] < log10(1e5)) {  // Reasonable threshold: 10^15 dyne/cm² for surface detection
+        // Use 1e15 for Neutron Stars
+        if (state[1] < log10(1e15)) {  // Reasonable threshold: 10^15 dyne/cm² for surface detection
             std::cout << "Surface reached at log_r: " << log_r << std::endl;
             break;
         }
@@ -183,7 +187,6 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
      */
     
     double m = pow(10.0, state[0]);
-    double P = pow(10.0, state[1]);
     double r = pow(10.0, log_r);
     
     // Add check for m approaching zero (same as polytropic version)
@@ -197,6 +200,7 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
     if (log_P > max_logP) log_P = max_logP;
     
     // Get density from spline interpolation: log_rho = f^(-1)(log_P)
+    double P = std::pow(10.0, log_P);
     double log_rho = gsl_spline_eval(spline_inv, log_P, acc_inv);
     double rho = pow(10.0, log_rho);
     
@@ -212,7 +216,7 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
     return {dlogm_dlogr, dlogP_dlogr};
 }
 
-std::tuple<int, double, double> non_rotating_stellar_structure_spline(
+TovResult non_rotating_stellar_structure_spline(
     const gsl_spline* spline_inv,
     gsl_interp_accel* acc_inv,
     double min_logP,
@@ -273,24 +277,20 @@ std::tuple<int, double, double> non_rotating_stellar_structure_spline(
     // Since we only have the inverse spline ρ(P), we need to search for the correct P
     // This is a limitation - in practice you'd want both forward and inverse splines
     // For now, estimate using a reasonable range and binary search
-    double log_p0 = 15.0;  // Starting guess (typical neutron star central pressure)
     
     // Simple search to find pressure that gives approximately the right density
-    double target_log_rho = log10(rho_c);
-    double best_log_p = log_p0;
-    double min_error = 1e10;
+    auto rho_of_logP = [&](double lp){ return gsl_spline_eval(spline_inv, lp, acc_inv); };
     
-    for (double test_log_p = min_logP; test_log_p <= max_logP; test_log_p += 0.1) {
-        double test_log_rho = gsl_spline_eval(spline_inv, test_log_p, acc_inv);
-        double error = std::abs(test_log_rho - target_log_rho);
-        if (error < min_error) {
-            min_error = error;
-            best_log_p = test_log_p;
-        }
+    double a = min_logP;
+    double b = max_logP;
+    double target = std::log10(rho_c);
+    for (int it = 0; it < 60; ++it) {
+        double m = 0.5 * (a + b);
+        if (rho_of_logP(m) < target) a = m; else b = m;
     }
-    log_p0 = best_log_p;
-    
+    double log_p0 = 0.5 * (a + b);
     std::vector<double> state = {log_m0, log_p0};
+    std::vector<double> state_prev = state;
 
     std::cout << "Initial conditions (spline-based):" << std::endl;
     std::cout << "  log_r_start = " << log_r_start << std::endl;
@@ -301,24 +301,14 @@ std::tuple<int, double, double> non_rotating_stellar_structure_spline(
 
     int idx = 0;
     double log_r = log_r_start;
+    double log_r_prev = log_r_start;
     double current_dlogr = base_dlogr;
+    double dlogr_min = 0.2 * base_dlogr;
+    double dlogr_max = 5.0 * base_dlogr;
+
+    double logP_stop = std::log10(pressure_threshold);
 
     while (log_r < log_r_end) {
-        // Adaptive step size control
-        if (use_adaptive_stepping && idx > 0) {
-            // Adjust step size based on pressure gradient
-            double pressure_gradient = std::abs(state[1] - log_p0) / (log_r - log_r_start + 1e-10);
-            if (pressure_gradient > 1.0) {
-                current_dlogr = base_dlogr * 0.5;  // Smaller steps in steep regions
-            } else if (pressure_gradient < 0.1) {
-                current_dlogr = base_dlogr * 2.0;  // Larger steps in flat regions
-            } else {
-                current_dlogr = base_dlogr;
-            }
-            // Clamp step size to reasonable bounds
-            current_dlogr = std::max(base_dlogr * 0.1, std::min(current_dlogr, base_dlogr * 5.0));
-        }
-        
         // Integration step using spline-based derivatives
         state = rk4_step(log_r, current_dlogr, state, 
         [spline_inv, acc_inv, min_logP, max_logP](double r, const std::vector<double>& s) {
@@ -326,18 +316,26 @@ std::tuple<int, double, double> non_rotating_stellar_structure_spline(
         });
         
         log_r += current_dlogr;
+
+        double g_prev = state_prev[1] - logP_stop;
+        double g_curr = state[1] - logP_stop;
+        if (g_prev > 0.0 && g_curr <= 0.0) {
+            // Linear interpolation to the crossing
+            double t = g_prev / (g_prev - g_curr);
+            double log_r_surf = log_r_prev + t * (log_r - log_r_prev);
+            
+            double log_m_surf = state_prev[0] + t * (state[0] - state_prev[0]);
+
+            if (write_output) {
+                outfile << log_r_surf << "," << log_m_surf << "," << logP_stop << "\n";
+                outfile.close();
+            }
+            return {idx+1, log_m_surf, log_r_surf, true};
+        }
         
         // Output to file if requested
         if (write_output) {
             outfile << log_r << "," << state[0] << "," << state[1] << "\n";
-        }
-
-        // Surface detection with configurable threshold
-        double current_pressure = pow(10.0, state[1]);
-        if (current_pressure < pressure_threshold) {
-            std::cout << "Surface reached at log_r: " << log_r 
-                      << " (P = " << current_pressure << " dyne/cm²)" << std::endl;
-            break;
         }
         
         // EOS validity check
@@ -359,13 +357,28 @@ std::tuple<int, double, double> non_rotating_stellar_structure_spline(
                       << ", log_P: " << state[1] << ", step: " << current_dlogr << std::endl;
         }
 
-        idx += 1;
+        // Adaptive step size control
+        if (use_adaptive_stepping && idx > 0) {
+            // Adjust step size based on pressure gradient
+            double slope = std::abs((state[1] - state_prev[1]) / (log_r - log_r_prev));
+            // larger slope -> smaller step; smaller slope -> larger step
+            double scale = (slope > 1.0 ? 0.5 : (slope < 0.1 ? 2.0 : 1.0));
+            // Clamp step size to reasonable bounds
+            current_dlogr = std::clamp(base_dlogr * scale, dlogr_min, dlogr_max);
+        }
+
+        if (log_r + current_dlogr > log_r_end) current_dlogr = log_r_end - log_r;
+
+        state_prev = state;
+        log_r_prev = log_r;
+        ++idx;
     }
+
+    std::cerr << "[NoSurface] rho_c=" << rho_c
+          << " last log_r=" << log_r
+          << " last log_P=" << state[1]
+          << " logP_stop=" << logP_stop << "\n";
     
-    if (write_output) {
-        outfile.close();
-    }
-    
-    // Return results
-    return {idx, state[0], log_r};
+    if (write_output) outfile.close();
+    return {idx, state[0], log_r, false};
 }
