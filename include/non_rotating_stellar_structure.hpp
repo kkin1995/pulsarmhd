@@ -330,8 +330,11 @@ TovResult non_rotating_stellar_structure_spline(
     double base_dlogr,
     bool use_adaptive_stepping,
     double pressure_threshold,
-    const std::string& output_filename
+    const std::string& output_filename,
+    const gsl_spline* spline_eps = nullptr,
+    gsl_interp_accel* acc_eps = nullptr
 );
+
 
 /**
  * @brief Computes the mass and pressure derivatives using the Newtonian equations of stellar structure.
@@ -556,6 +559,16 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
     double min_logP, 
     double max_logP
 );
+
+std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
+    double log_r,
+    const std::vector<double>& state,
+    const gsl_spline* rho_of_logP,  gsl_interp_accel* acc_rho,
+    const gsl_spline* eps_of_logP,  gsl_interp_accel* acc_eps,
+    double min_logP,
+    double max_logP
+);
+
 
 /**
  * @brief EOS parameters are now handled by the PolytropicEOS class.

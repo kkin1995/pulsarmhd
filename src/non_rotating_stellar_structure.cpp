@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <fstream>
+#include <gsl/gsl_errno.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -216,6 +217,50 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
     return {dlogm_dlogr, dlogP_dlogr};
 }
 
+// ε-aware TOV derivatives using tabulated splines.
+// - rho_of_logP: inverse EOS spline giving log10(rho) from log10(P)  [kept for diagnostics/surface logic]
+// - eps_of_logP: spline giving epsilon (erg/cm^3) from log10(P); may be nullptr => fallback epsilon = rho*c^2
+std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
+    double log_r,
+    const std::vector<double>& state,
+    const gsl_spline* rho_of_logP,  gsl_interp_accel* acc_rho,
+    const gsl_spline* eps_of_logP,  gsl_interp_accel* acc_eps,
+    double min_logP,
+    double max_logP
+){
+    double m = std::pow(10.0, state[0]);
+    double r = std::pow(10.0, log_r);
+    if (m < 1e-30) m = 1e-30;
+
+    // Clamp pressure and evaluate required fields
+    double logP = state[1];
+    if (logP < min_logP) logP = min_logP;
+    if (logP > max_logP) logP = max_logP;
+
+    const double P = std::pow(10.0, logP);                  // dyne/cm^2 = erg/cm^3
+
+    // ρ from inverse spline (still useful for surface handling / diagnostics)
+    const double log_rho = gsl_spline_eval(rho_of_logP, logP, acc_rho);
+    const double rho     = std::pow(10.0, log_rho);         // g/cm^3
+
+    // ε from spline if provided; else fallback ε ≈ ρ c^2
+    const double eps = (eps_of_logP)
+        ? gsl_spline_eval(eps_of_logP, logP, acc_eps)       // erg/cm^3
+        : rho * c * c;                                       // fallback
+
+    // dm/dr = 4π r^2 ε / c^2  ⇒ dlogm/dlogr = (r/m) dm/dr
+    const double dlogm_dlogr = (4.0 * M_PI * r*r*r * (eps / (c*c))) / m;
+
+    // dlogP/dlogr = (r/P) * dP/dr with GR TOV using ε
+    const double denom = 1.0 - (2.0 * G * m) / (r * c * c);
+    const double dlogP_dlogr =
+        -(G * (eps + P) * (m + 4.0 * M_PI * r*r*r * P / (c*c))) /
+         (P * r * denom * (c*c));
+
+    return {dlogm_dlogr, dlogP_dlogr};
+}
+
+
 TovResult non_rotating_stellar_structure_spline(
     const gsl_spline* spline_inv,
     gsl_interp_accel* acc_inv,
@@ -227,7 +272,9 @@ TovResult non_rotating_stellar_structure_spline(
     double base_dlogr,
     bool use_adaptive_stepping,
     double pressure_threshold,
-    const std::string& output_filename
+    const std::string& output_filename,
+    const gsl_spline* spline_eps,
+    gsl_interp_accel* acc_eps
 ) {
     /*
      * STELLAR STRUCTURE INTEGRATION WITH SPLINE-BASED EOS
@@ -289,6 +336,10 @@ TovResult non_rotating_stellar_structure_spline(
         if (rho_of_logP(m) < target) a = m; else b = m;
     }
     double log_p0 = 0.5 * (a + b);
+    if (std::abs(log_p0 - max_logP) < 1e-6) {
+        std::cerr << "[Pegged] rho_c=" << rho_c << " uses logP0=max_logP; EOS ceiling reached.\n";
+    }
+    
     std::vector<double> state = {log_m0, log_p0};
     std::vector<double> state_prev = state;
 
@@ -310,10 +361,11 @@ TovResult non_rotating_stellar_structure_spline(
 
     while (log_r < log_r_end) {
         // Integration step using spline-based derivatives
-        state = rk4_step(log_r, current_dlogr, state, 
-        [spline_inv, acc_inv, min_logP, max_logP](double r, const std::vector<double>& s) {
-            return tolman_oppenheimer_volkoff_derivatives_spline(r, s, spline_inv, acc_inv, min_logP, max_logP);
-        });
+        state = rk4_step(log_r, current_dlogr, state,
+            [spline_inv, acc_inv, spline_eps, acc_eps, min_logP, max_logP](double r, const std::vector<double>& s) {
+                return tolman_oppenheimer_volkoff_derivatives_spline_eps(
+                    r, s, spline_inv, acc_inv, spline_eps, acc_eps, min_logP, max_logP);
+            });
         
         log_r += current_dlogr;
 
