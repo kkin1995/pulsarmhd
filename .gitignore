@@ -45,4 +45,14 @@ plots/
 *.png
 compile_commands.json
 
+# Claude context file
+CLAUDE.md
+.coverage
+CLI_INTEGRATION_PROPOSAL.md
+scripts/__pycache__/
+tests/python/__pycache__/
+tests/python/unit/__pycache__/
+
+
+
 # End of https://www.toptal.com/developers/gitignore/api/c++
