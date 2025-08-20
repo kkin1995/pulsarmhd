@@ -56,3 +56,7 @@ tests/python/unit/__pycache__/
 
 
 # End of https://www.toptal.com/developers/gitignore/api/c++
+# Python caches (repo-wide)
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
