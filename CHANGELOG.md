@@ -8,6 +8,7 @@ Before `1.0.0`, minor versions may include breaking changes if needed.
 ## [Unreleased]
 ### Added
 ### Changed
+- Mass–density plot: apply axis cosmetics once after plotting; consistent `fig`, `ax` lifecycle (no visual change for single EOS).
 ### Fixed
 
 ## [0.4.0] - 2025-08-21
