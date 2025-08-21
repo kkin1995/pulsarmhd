@@ -11,6 +11,7 @@ Date: 2025-01-09
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
 import numpy as np
 import glob
 import os
@@ -19,7 +20,7 @@ import math
 import logging
 import argparse
 import yaml
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -69,7 +70,7 @@ class PlotStyle:
         'pressure': '--',
         'density': ':'
     })
-    figure_size: Tuple[int, int] = (10, 6)
+    figure_size: Tuple[float, float] = (10.0, 6.0)
     dpi: int = 300
     grid: bool = True
     legend_location: str = 'best'
@@ -79,6 +80,12 @@ class PlotStyle:
     marker_size: float = 30.0
     alpha: float = 0.7
     grid_alpha: float = 0.3
+    show_title: bool = True
+    show_legend: bool = True
+    connect_points: bool = False       # draw a line through sorted points
+    curve_width: float = 1.2
+    curve_alpha: float = 1.0
+    mark_max_point: bool = False
 
 
 class PlotTheme:
@@ -96,9 +103,9 @@ class PlotTheme:
                 'axes.spines.right': False,
                 'axes.grid': True,
                 'grid.alpha': 0.3,
-                'legend.frameon': True,
-                'legend.fancybox': True,
-                'legend.shadow': True,
+                'legend.frameon': False,
+                'legend.fancybox': False,
+                'legend.shadow': False,
                 'figure.facecolor': 'white',
                 'axes.facecolor': 'white'
             },
@@ -386,6 +393,13 @@ class ConfigManager:
                 config.style.markers.update(s['markers'])
             if 'line_styles' in s and isinstance(s['line_styles'], dict):
                 config.style.line_styles.update(s['line_styles'])
+            if 'show_title' in s:        config.style.show_title = bool(s['show_title'])
+            if 'show_legend' in s:       config.style.show_legend = bool(s['show_legend'])
+            if 'connect_points' in s:    config.style.connect_points = bool(s['connect_points'])
+            if 'curve_width' in s:       config.style.curve_width = float(s['curve_width'])
+            if 'curve_alpha' in s:       config.style.curve_alpha = float(s['curve_alpha'])
+            if 'mark_max_point' in s:    config.style.mark_max_point = bool(s['mark_max_point'])
+
 
         # EOS file patterns (optional override)
         if 'eos_patterns' in config_data and isinstance(config_data['eos_patterns'], dict):
@@ -407,17 +421,15 @@ class ConfigManager:
     
     def validate_paths(self) -> bool:
         """Validate that required directories exist."""
-        data_path = Path(self.config.data_directory)
-        output_path = Path(self.config.output_directory)
-        
+        data_path = Path(self.config.data_directory).expanduser().resolve()
+        output_path = Path(self.config.output_directory).expanduser().resolve()
+
         if not data_path.exists():
             self.logger.error(f"Data directory does not exist: {data_path}")
             return False
-            
-        # Create output directory if it doesn't exist
+
         output_path.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Output directory ready: {output_path}")
-        
         return True
 
 
@@ -763,8 +775,10 @@ class StellarPlotter:
         
         # Enhanced grid
         if self.config.style.grid:
-            ax1.grid(True, alpha=self.config.style.grid_alpha)
-        
+            ax.grid(True, alpha=self.config.style.grid_alpha)
+        else:
+            ax.grid(False)
+
         # Create combined legend with enhanced styling
         lines_1, labels_1 = ax1.get_legend_handles_labels()
         lines_2, labels_2 = ax2.get_legend_handles_labels()
@@ -800,7 +814,7 @@ class StellarPlotter:
         Returns:
             Path to saved plot file
         """
-        plt.figure(figsize=self.config.style.figure_size)
+        fig, ax = plt.subplots(figsize=self.config.style.figure_size)
         
         # Always define a cap (∞ if no validation/max set)
         if getattr(self.config, "validation", None) and hasattr(self.config.validation, "max_radius_km"):
@@ -829,29 +843,61 @@ class StellarPlotter:
             masses = [m.mass_solar for m in models_sorted]
 
             style = self._get_plot_style(dataset.eos_type)
-            label = dataset.eos_type.replace('_', ' ').title()
+            ax.scatter(
+                radii, masses,
+                marker=style['marker'], s=style['s'],
+                alpha=style['alpha'],
+                facecolor=style['color'], edgecolor=style['color'], linewidths=0.0,
+                label=dataset.eos_type.replace('_', ' ').title(),
+                zorder=2
+            )
 
-            # points with legend label
-            plt.scatter(radii, masses, label=label, marker=style['marker'],
-                    s=style['s'], alpha=style['alpha'], color=style['color'])
+            if getattr(self.config.style, "connect_points", False):
+                ax.plot(
+                    radii, masses, "-",
+                    lw=self.config.style.curve_width,
+                    alpha=self.config.style.curve_alpha,
+                    color=style['color'],
+                    zorder=1
+                )
+
+            if getattr(self.config.style, "mark_max_point", False):
+                i_max = int(np.argmax(masses))
+                ax.scatter([radii[i_max]], [masses[i_max]], s=50, marker='*',
+                        color='0.15', zorder=3)
+                ax.annotate(r"$M_{\max}$", xy=(radii[i_max], masses[i_max]),
+                            xytext=(6, 6), textcoords="offset points", fontsize=8)
         
-        plt.xlabel('Radius (km)', fontsize=12)
-        plt.ylabel('Mass (Solar Masses)', fontsize=12)
-        plt.title('Mass-Radius Relations for Compact Objects', fontsize=14, pad=15)
+        # Labels
+        ax.set_xlabel(r"$R\;(\mathrm{km})$")
+        ax.set_ylabel(r"$M\;(M_\odot)$")
         
+        # Axes cosmetics
+        ax.tick_params(direction='in', which='both', top=True, right=True, length=4)
+        ax.tick_params(which='minor', length=2)
+        ax.xaxis.set_minor_locator(AutoMinorLocator())
+        ax.yaxis.set_minor_locator(AutoMinorLocator())
+
         if self.config.style.grid:
-            plt.grid(True, alpha=self.config.style.grid_alpha)
-        
-        plt.legend(loc=self.config.style.legend_location, framealpha=0.9, 
-                  fancybox=True, shadow=True)
+            ax.grid(True, alpha=self.config.style.grid_alpha)
+
+        # Title/legend logic
+        if self.config.style.show_title:
+            ax.set_title('Mass–Radius Relations for Compact Objects', pad=10)
+        if self.config.style.show_legend and len(datasets) > 1:
+            ax.legend(loc=self.config.style.legend_location)
+
         plt.tight_layout()
-        
+
         output_path = os.path.join(self.config.output_directory, output_file)
-        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight',
-                   facecolor='auto', edgecolor='none')
-        plt.close()
-        
+        fig.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
         self.logger.info(f"Saved mass-radius relation plot: {output_path}")
+
+        pdf_path = os.path.splitext(output_path)[0] + ".pdf"
+        fig.savefig(pdf_path, bbox_inches='tight')
+
+        plt.close(fig)
+
         return output_path
     
     def plot_mass_density_relation(self, datasets: List[EOSDataset],
@@ -866,7 +912,7 @@ class StellarPlotter:
         Returns:
             Path to saved plot file
         """
-        plt.figure(figsize=self.config.style.figure_size)
+        fig, ax = plt.subplots(figsize=self.config.style.figure_size)
         
         for dataset in datasets:
             if not dataset.models:
@@ -876,19 +922,32 @@ class StellarPlotter:
             style = self._get_plot_style(dataset.eos_type)
             label = dataset.eos_type.replace('_', ' ').title()
             
-            plt.scatter(dataset.log_densities, dataset.masses,
-                       label=label, **style)
+            ax.scatter(dataset.log_densities, dataset.masses,
+                    marker=style['marker'], s=style['s'],
+                    alpha=style['alpha'], facecolor=style['color'],
+                    edgecolor=style['color'], linewidths=0.0,
+                    label=dataset.eos_type.replace('_',' ').title(), zorder=2)
+                    
+            if getattr(self.config.style, "connect_points", False):
+                xy = sorted(zip(dataset.log_densities, dataset.masses))
+                ax.plot([x for x,_ in xy], [y for _,y in xy], "-",
+                        lw=self.config.style.curve_width,
+                        alpha=self.config.style.curve_alpha,
+                        color=style['color'], zorder=1)
         
-        plt.xlabel('log₁₀(ρc) [g/cm³]', fontsize=12)
-        plt.ylabel('Mass (Solar Masses)', fontsize=12)
-        plt.title('Mass vs. Central Density for Compact Objects', fontsize=14, pad=15)
-        
-        if self.config.style.grid:
-            plt.grid(True, alpha=self.config.style.grid_alpha)
-        
-        plt.legend(loc=self.config.style.legend_location, framealpha=0.9,
-                  fancybox=True, shadow=True)
-        plt.tight_layout()
+            ax.set_xlabel(r"$\log_{10}\rho_c\;[\mathrm{g\,cm^{-3}}]$")
+            ax.set_ylabel(r"$M\;(M_\odot)$")
+            ax.tick_params(direction='in', which='both', top=True, right=True, length=4)
+            ax.tick_params(which='minor', length=2)
+            ax.xaxis.set_minor_locator(AutoMinorLocator())
+            ax.yaxis.set_minor_locator(AutoMinorLocator())
+            if self.config.style.grid:
+                ax.grid(True, alpha=self.config.style.grid_alpha)
+            if self.config.style.show_title:
+                ax.set_title('Mass vs. Central Density', pad=10)
+            if self.config.style.show_legend and len(datasets) > 1:
+                ax.legend(loc=self.config.style.legend_location)
+            plt.tight_layout()
         
         output_path = os.path.join(self.config.output_directory, output_file)
         plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight',
@@ -1043,8 +1102,8 @@ VALIDATION LEVELS:
         subparser.add_argument('--theme', choices=['publication', 'presentation', 'dark', 'colorblind'],
                               default='publication', help='Plot theme (default: publication)')
         subparser.add_argument('--dpi', type=int, default=300, help='Output resolution (default: 300)')
-        subparser.add_argument('--figure-size', nargs=2, type=int, default=[10, 6],
-                              help='Figure size in inches (default: 10 6)')
+        subparser.add_argument('--figure-size', nargs=2, type=float, default=[10.0, 6.0],
+                      help='Figure size in inches (e.g., 3.4 2.3)')
         subparser.add_argument('--no-grid', action='store_true', help='Disable grid lines')
         subparser.add_argument('--alpha', type=float, default=0.7, help='Marker transparency (default: 0.7)')
         subparser.add_argument('--marker-size', type=float, default=30.0, help='Marker size (default: 30)')
@@ -1062,15 +1121,20 @@ VALIDATION LEVELS:
         
         # Output options
         subparser.add_argument('--config', help='YAML configuration file')
-        subparser.add_argument('--output-dir', default='./plots/', help='Output directory (default: ./plots/)')
+        subparser.add_argument('--output-dir', default=None, help='Output directory (default: ./plots/)')
         subparser.add_argument('--output-prefix', default='', help='Output filename prefix')
         subparser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                               default='INFO', help='Logging level (default: INFO)')
         subparser.add_argument('--stats', action='store_true', help='Display summary statistics')
         
         # Data options
-        subparser.add_argument('--data-dir', default='./data/', help='Data directory (default: ./data/)')
-    
+        subparser.add_argument('--data-dir', default=None, help='Data directory (default: ./data/)')
+
+        subparser.add_argument('--no-title', action='store_true')
+        subparser.add_argument('--no-legend', action='store_true')
+        subparser.add_argument('--connect-points', action='store_true')
+        subparser.add_argument('--mark-max', action='store_true')
+
     return parser
 
 
@@ -1085,10 +1149,14 @@ def execute_plotting_command(args) -> None:
         config = config_manager.get_config()
         
         # Apply CLI overrides to configuration
-        if hasattr(args, 'output_dir') and args.output_dir:
+        if getattr(args, 'output_dir', None) is not None:
             config.output_directory = args.output_dir
-        if hasattr(args, 'data_dir') and args.data_dir:
+        if getattr(args, 'data_dir', None) is not None:
             config.data_directory = args.data_dir
+        if getattr(args, 'no_title', False):    config.style.show_title = False
+        if getattr(args, 'no_legend', False):   config.style.show_legend = False
+        if getattr(args, 'connect_points', False): config.style.connect_points = True
+        if getattr(args, 'mark_max', False):    config.style.mark_max_point = True
             
         # Apply styling overrides
         if hasattr(args, 'theme'):
@@ -1136,7 +1204,10 @@ def execute_plotting_command(args) -> None:
         
         logger.info(f"Executing command: {args.command}")
         logger.info(f"Theme: {config.style.theme}, Validation: {getattr(args, 'validate', 'basic')}")
-        
+        logging.getLogger(__name__).info(
+            f"Using data dir: {config.data_directory} | output dir: {config.output_directory}"
+        )
+
         # Execute specific command
         if args.command == 'profile':
             # Enhanced profile plotting
