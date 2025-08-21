@@ -935,19 +935,19 @@ class StellarPlotter:
                         alpha=self.config.style.curve_alpha,
                         color=style['color'], zorder=1)
         
-            ax.set_xlabel(r"$\log_{10}\rho_c\;[\mathrm{g\,cm^{-3}}]$")
-            ax.set_ylabel(r"$M\;(M_\odot)$")
-            ax.tick_params(direction='in', which='both', top=True, right=True, length=4)
-            ax.tick_params(which='minor', length=2)
-            ax.xaxis.set_minor_locator(AutoMinorLocator())
-            ax.yaxis.set_minor_locator(AutoMinorLocator())
-            if self.config.style.grid:
-                ax.grid(True, alpha=self.config.style.grid_alpha)
-            if self.config.style.show_title:
-                ax.set_title('Mass vs. Central Density', pad=10)
-            if self.config.style.show_legend and len(datasets) > 1:
-                ax.legend(loc=self.config.style.legend_location)
-            plt.tight_layout()
+        ax.set_xlabel(r"$\log_{10}\rho_c\;[\mathrm{g\,cm^{-3}}]$")
+        ax.set_ylabel(r"$M\;(M_\odot)$")
+        ax.tick_params(direction='in', which='both', top=True, right=True, length=4)
+        ax.tick_params(which='minor', length=2)
+        ax.xaxis.set_minor_locator(AutoMinorLocator())
+        ax.yaxis.set_minor_locator(AutoMinorLocator())
+        if self.config.style.grid:
+            ax.grid(True, alpha=self.config.style.grid_alpha)
+        if self.config.style.show_title:
+            ax.set_title('Mass vs. Central Density', pad=10)
+        if self.config.style.show_legend and len(datasets) > 1:
+            ax.legend(loc=self.config.style.legend_location)
+        plt.tight_layout()
         
         output_path = os.path.join(self.config.output_directory, output_file)
         plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight',
