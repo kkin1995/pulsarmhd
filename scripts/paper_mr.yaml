@@ -1,0 +1,26 @@
+data_directory: "../data"
+output_directory: "./plots/paper"
+
+style:
+  theme: "publication"
+  figure_size: [3.4, 2.3]
+  dpi: 600
+  grid: false
+  font_family: "serif"
+  line_width: 1.0
+  marker_size: 12
+  alpha: 1.0
+  colors: { hybrid: "black" }
+
+  show_title: false
+  show_legend: false         # auto-suppressed anyway for 1 dataset
+  connect_points: true
+  curve_width: 0.9
+  curve_alpha: 1.0
+  mark_max_point: true
+
+validation:
+  max_radius_km: 50.0
+  skip_r_end_artifacts: true
+  r_end_km: 1000.0
+  r_end_tolerance_km: 1.0
