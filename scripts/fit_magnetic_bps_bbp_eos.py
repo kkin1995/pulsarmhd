@@ -9,6 +9,41 @@ import math
 
 c = 2.99792458e10  # cm/s
 
+def phi0(t): return 1 - 3*t**2 + 2*t**3
+def phi1(t): return 3*t**2 - 2*t**3
+def psi0(t): return t**3 - 2*t**2 + t
+def psi1(t): return t**3 - t**2
+
+def cubic_hermite(x, x1, x2, f1, f2, m1, m2):
+    """Scalar cubic Hermite in log–log space on [x1,x2]."""
+    h = x2 - x1
+    t = (x - x1) / h
+    return f1*phi0(t) + f2*phi1(t) + h*m1*psi0(t) + h*m2*psi1(t)
+
+
+def _hermite_gap_bridge(xL, yL, xR, yR, n=64):
+    """
+    Monotone bridge in (log rho, log P) between endpoints using
+    a cubic Hermite with endpoint slopes set to the secant.
+    With mL=mR=secant, this reduces to shape-preserving linear in log–log.
+    Returns x_bridge[0..n-1], y_bridge[0..n-1], inclusive of both ends.
+    """
+    if not (np.isfinite(xL) and np.isfinite(yL) and np.isfinite(xR) and np.isfinite(yR)):
+        raise ValueError("Non-finite endpoints in gap bridge.")
+    if xR <= xL:
+        raise ValueError("xR must exceed xL for gap bridge.")
+
+    m = (yR - yL) / (xR - xL)  # secant → guarantees monotonicity without overshoot
+    t = np.linspace(0.0, 1.0, n)
+    h00 =  2*t**3 - 3*t**2 + 1
+    h10 =      t**3 - 2*t**2 + t
+    h01 = -2*t**3 + 3*t**2
+    h11 =      t**3 -   t**2
+    x  = xL + (xR - xL) * t
+    y  = h00*yL + h10*(xR - xL)*m + h01*yR + h11*(xR - xL)*m
+    return x, y
+
+
 def fritsch_carlson_monotonic_slopes(x1, x2, y1, y2, m1, m2):
     """
     Apply Fritsch-Carlson monotonicity constraints to cubic Hermite spline derivatives.
@@ -99,8 +134,9 @@ def linear_interpolation(x, x1, x2, y1, y2):
 
 # READING DATA
 bbp_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bbp.csv")
-magnetic_bps_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/magnetic_bps_eos_B_001.csv")
+magnetic_bps_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bps_single_b_b_0e_00.csv")
 bps_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bps.csv")
+out_path = "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/unified_eos_magnetic_BPS-BBP-Polytrope_b_0e-00.csv"
 
 # rho,P,nb,A,Z,Gamma
 log_rho_bbp = np.log10(bbp_data["rho"].values)
@@ -159,169 +195,174 @@ f_bbp = PchipInterpolator(bbp_df['x'].values, bbp_df['y'].values, extrapolate=Fa
 # ---- Root-find join (same logic as Step 1, now with PCHIP) ----
 a = float(log_rho_min); b = float(log_rho_max)
 if not (np.isfinite(a) and np.isfinite(b) and a < b):
-    raise ValueError("No valid overlap between BPS and BBP tables to perform the join.")
+    # No BPS–BBP overlap: bridge from last BPS point to first BBP point
+    xL = float(bps_df['x'].values[-1]); yL = float(bps_df['y'].values[-1])
+    xR = float(bbp_df['x'].values[ 0]); yR = float(bbp_df['y'].values[ 0])
 
-def g(x):  # Δ(log10 P)
-    return float(f_bps(x) - f_bbp(x))
+    # one-sided raw slopes (logging only)
+    mL_raw = (bps_df['y'].values[-1] - bps_df['y'].values[-2]) / (bps_df['x'].values[-1] - bps_df['x'].values[-2])
+    mR_raw = (bbp_df['y'].values[ 1] - bbp_df['y'].values[ 0]) / (bbp_df['x'].values[ 1] - bbp_df['x'].values[ 0])
 
-ga, gb = g(a), g(b)
-# Diagnostics to understand sign pattern
-xs_probe = np.linspace(a, b, 9)
-g_probe = np.array([g(xx) for xx in xs_probe])
-print("g(a), g(b):", ga, gb)
-print("min(g) on overlap, max(g) on overlap:", np.nanmin(g_probe), np.nanmax(g_probe))
+    xb, yb = _hermite_gap_bridge(xL, yL, xR, yR, n=64)
 
-if np.isfinite(ga) and np.isfinite(gb) and ga * gb < 0:
-    log_rho_join = brentq(g, a, b)      # pressure equality
-    method = "root"
+    print("Join method: gap_bridge (no BPS–BBP overlap)")
+    print(f"$\\log_{{10}}(\\rho)$ gap:  [{xL:.6f}, {xR:.6f}]  (width = {xR-xL:.5f} dex)")
+    sec = (yR - yL)/(xR - xL)
+    print(f"Endpoint values: f1(BPS)={yL:.6f}, f2(BBP)={yR:.6f}")
+    print(f"Endpoint slopes (raw -> bridged): m1 {mL_raw:.6f} -> {sec:.6f},  m2 {mR_raw:.6f} -> {sec:.6f}")
+
+    # Build hybrid arrays (avoid duplicating endpoints)
+    hybrid_log_rho = np.concatenate([bps_df['x'].values, xb[1:], bbp_df['x'].values[1:]])
+    hybrid_log_P   = np.concatenate([bps_df['y'].values, yb[1:], bbp_df['y'].values[1:]])
+
+    # Define seam markers for plotting/diagnostics
+    x_1, x_2 = xL, xR
+    trans_x, trans_y = xb, yb
 else:
-    xs = np.linspace(a, b, 2000)
-    diffs = np.abs([g(xx) for xx in xs])
-    i = int(np.nanargmin(diffs))
-    log_rho_join = float(xs[i])
-    method = "min_distance_fallback"
+    def g(x):  # Δ(log10 P)
+        return float(f_bps(x) - f_bbp(x))
 
-print(f"Join method: {method}")
-print(r'$\log_{10}(\rho)$ at join: ', log_rho_join)
+    ga, gb = g(a), g(b)
+    # Diagnostics to understand sign pattern
+    xs_probe = np.linspace(a, b, 9)
+    g_probe = np.array([g(xx) for xx in xs_probe])
+    print("g(a), g(b):", ga, gb)
+    print("min(g) on overlap, max(g) on overlap:", np.nanmin(g_probe), np.nanmax(g_probe))
 
-log_P_bps_transition = float(f_bps(log_rho_join))
-log_P_bbp_transition = float(f_bbp(log_rho_join))
-print(f"log(P) from BPS at join: {log_P_bps_transition}")
-print(f"log(P) from BBP at join: {log_P_bbp_transition}")
-# absolute and relative mismatch for clarity
-P_bps = 10.0**log_P_bps_transition
-P_bbp = 10.0**log_P_bbp_transition
-print(f"Pressure mismatch (linear): {P_bps - P_bbp:.6e}  (ratio BPS/BBP = {P_bps / P_bbp:.6f})")
-
-def phi0(t):
-    return 1 - (3 * (t ** 2)) + (2 * (t ** 3))
-
-def phi1(t):
-    return (3 * (t ** 2)) - (2 * (t ** 3))
-
-def psi0(t):
-    return (t ** 3) - (2 * (t ** 2)) + t
-
-def psi1(t):
-    return (t ** 3) - (t ** 2)
-
-def cubic_hermite(x, x1, x2, f1, f2, m1, m2):
-    h = x2 - x1
-    t = (x - x1) / h
-    return f1*phi0(t) + f2*phi1(t) + h*m1*psi0(t) + h*m2*psi1(t)
-
-# Keep x1 near the min-|Δ| point but away from the hard boundary by a tiny margin
-x0 = float(log_rho_join)
-a_eps = a + 1e-4
-b_eps = b - 1e-4
-x_1 = max(a_eps, min(x0, b_eps))
-
-y1 = float(f_bps(x_1))  # log10 P at start (BPS)
-P1 = 10.0**y1
-
-# target: BBP reaches slightly above P1 (e.g., +0.1%)
-frac = 1e-3
-P_target = P1 * (1.0 + frac)
-y_target = math.log10(P_target)
-
-# Find x2 >= x1 such that f_bbp(x2) == y_target, within BBP domain (extrapolate=False)
-x2_lo = x_1
-x2_hi = float(bbp_df['x'].iloc[-1])  # high end of BBP table
-def h(x): 
-    val = f_bbp(x)
-    return float(val - y_target) if np.isfinite(val) else -1.0  # keep sign
-
-h_lo, h_hi = h(x2_lo), h(x2_hi)
-
-if np.isnan(h_lo):
-    raise RuntimeError("BBP undefined at x1; check domain/NaNs.")
-
-if h_hi <= 0:
-    # Even at the top of BBP table we haven't reached y_target.
-    # Fall back to exact equality with y1 (plateau end), which MUST exist eventually.
-    # Try root for y1 instead of y_target:
-    y_plateau = y1
-    def h_eq(x): 
-        val = f_bbp(x)
-        return float(val - y_plateau) if np.isfinite(val) else -1.0
-    if h_eq(x2_hi) <= 0:
-        # Extreme fallback: clamp x2 to table end and we will create a flat segment (PCHIP later pieces will lift it)
-        x_2 = x2_hi
-        f2 = float(f_bbp(x_2))
+    if np.isfinite(ga) and np.isfinite(gb) and ga * gb < 0:
+        log_rho_join = brentq(g, a, b)      # pressure equality
+        method = "root"
     else:
-        x_2 = brentq(h_eq, x2_lo, x2_hi)
+        xs = np.linspace(a, b, 2000)
+        diffs = np.abs([g(xx) for xx in xs])
+        i = int(np.nanargmin(diffs))
+        log_rho_join = float(xs[i])
+        method = "min_distance_fallback"
+
+    print(f"Join method: {method}")
+    print(r'$\log_{10}(\rho)$ at join: ', log_rho_join)
+
+    log_P_bps_transition = float(f_bps(log_rho_join))
+    log_P_bbp_transition = float(f_bbp(log_rho_join))
+    print(f"log(P) from BPS at join: {log_P_bps_transition}")
+    print(f"log(P) from BBP at join: {log_P_bbp_transition}")
+    # absolute and relative mismatch for clarity
+    P_bps = 10.0**log_P_bps_transition
+    P_bbp = 10.0**log_P_bbp_transition
+    print(f"Pressure mismatch (linear): {P_bps - P_bbp:.6e}  (ratio BPS/BBP = {P_bps / P_bbp:.6f})")
+
+    # Keep x1 near the min-|Δ| point but away from the hard boundary by a tiny margin
+    x0 = float(log_rho_join)
+    a_eps = a + 1e-4
+    b_eps = b - 1e-4
+    x_1 = max(a_eps, min(x0, b_eps))
+
+    y1 = float(f_bps(x_1))  # log10 P at start (BPS)
+    P1 = 10.0**y1
+
+    # target: BBP reaches slightly above P1 (e.g., +0.1%)
+    frac = 1e-3
+    P_target = P1 * (1.0 + frac)
+    y_target = math.log10(P_target)
+
+    # Find x2 >= x1 such that f_bbp(x2) == y_target, within BBP domain (extrapolate=False)
+    x2_lo = x_1
+    x2_hi = float(bbp_df['x'].iloc[-1])  # high end of BBP table
+    def h(x): 
+        val = f_bbp(x)
+        return float(val - y_target) if np.isfinite(val) else -1.0  # keep sign
+
+    h_lo, h_hi = h(x2_lo), h(x2_hi)
+
+    if np.isnan(h_lo):
+        raise RuntimeError("BBP undefined at x1; check domain/NaNs.")
+
+    if h_hi <= 0:
+        # Even at the top of BBP table we haven't reached y_target.
+        # Fall back to exact equality with y1 (plateau end), which MUST exist eventually.
+        # Try root for y1 instead of y_target:
+        y_plateau = y1
+        def h_eq(x): 
+            val = f_bbp(x)
+            return float(val - y_plateau) if np.isfinite(val) else -1.0
+        if h_eq(x2_hi) <= 0:
+            # Extreme fallback: clamp x2 to table end and we will create a flat segment (PCHIP later pieces will lift it)
+            x_2 = x2_hi
+            f2 = float(f_bbp(x_2))
+        else:
+            x_2 = brentq(h_eq, x2_lo, x2_hi)
+            f2 = float(f_bbp(x_2))
+    else:
+        x_2 = brentq(h, x2_lo, x2_hi)   # BBP reaches y_target
         f2 = float(f_bbp(x_2))
-else:
-    x_2 = brentq(h, x2_lo, x2_hi)   # BBP reaches y_target
-    f2 = float(f_bbp(x_2))
 
-# Endpoint values
-f1 = y1  # log10 P at x1 (BPS)
-print(f"Blend interval (monotone target): [{x_1:.6f}, {x_2:.6f}]  (width = {x_2 - x_1:.5f} dex)")
-print(f"Endpoint values: f1(BPS)={f1:.6f}, f2(BBP)={f2:.6f} (should be >= f1)")
+    # Endpoint values
+    f1 = y1  # log10 P at x1 (BPS)
+    print(f"Blend interval (monotone target): [{x_1:.6f}, {x_2:.6f}]  (width = {x_2 - x_1:.5f} dex)")
+    print(f"Endpoint values: f1(BPS)={f1:.6f}, f2(BBP)={f2:.6f} (should be >= f1)")
 
-# Endpoint slopes from PCHIP
-df_bps = f_bps.derivative(); df_bbp = f_bbp.derivative()
-m1_raw = float(df_bps(x_1))
-m2_raw = float(df_bbp(x_2))
+    # Endpoint slopes from PCHIP
+    df_bps = f_bps.derivative(); df_bbp = f_bbp.derivative()
+    m1_raw = float(df_bps(x_1))
+    m2_raw = float(df_bbp(x_2))
 
-# --- Single-interval monotone Hermite slope limiting ---
-# For increasing data (f2 >= f1), let Δ = (f2 - f1)/(x2 - x1).
-# Require m1,m2 >= 0 and not too large relative to Δ to avoid overshoot.
-def limit_slopes_monotone(f1, f2, x1, x2, m1, m2):
-    h = x2 - x1
-    if h <= 0:
-        return 0.0, 0.0
-    delta = (f2 - f1) / h
-    if delta <= 0:  # plateau or decreasing -> choose flat to remain monotone nondecreasing
-        return 0.0, 0.0
-    # Clip to nonnegative
-    m1 = max(0.0, m1)
-    m2 = max(0.0, m2)
-    # Express as α=m1/Δ, β=m2/Δ
-    alpha = m1 / delta; beta = m2 / delta
-    # Sufficient conditions for no overshoot on a single interval:
-    # α <= 3, β <= 3 and α^2 + β^2 <= 9  (Fritsch–Carlson/Hyman-style limiter)
-    # First clamp to 3
-    alpha = min(alpha, 3.0); beta = min(beta, 3.0)
-    s2 = alpha*alpha + beta*beta
-    if s2 > 9.0:
-        tau = 3.0 / math.sqrt(s2)
-        alpha *= tau; beta *= tau
-    return alpha*delta, beta*delta
+    # --- Single-interval monotone Hermite slope limiting ---
+    # For increasing data (f2 >= f1), let Δ = (f2 - f1)/(x2 - x1).
+    # Require m1,m2 >= 0 and not too large relative to Δ to avoid overshoot.
+    def limit_slopes_monotone(f1, f2, x1, x2, m1, m2):
+        h = x2 - x1
+        if h <= 0:
+            return 0.0, 0.0
+        delta = (f2 - f1) / h
+        if delta <= 0:  # plateau or decreasing -> choose flat to remain monotone nondecreasing
+            return 0.0, 0.0
+        # Clip to nonnegative
+        m1 = max(0.0, m1)
+        m2 = max(0.0, m2)
+        # Express as α=m1/Δ, β=m2/Δ
+        alpha = m1 / delta; beta = m2 / delta
+        # Sufficient conditions for no overshoot on a single interval:
+        # α <= 3, β <= 3 and α^2 + β^2 <= 9  (Fritsch–Carlson/Hyman-style limiter)
+        # First clamp to 3
+        alpha = min(alpha, 3.0); beta = min(beta, 3.0)
+        s2 = alpha*alpha + beta*beta
+        if s2 > 9.0:
+            tau = 3.0 / math.sqrt(s2)
+            alpha *= tau; beta *= tau
+        return alpha*delta, beta*delta
 
-m1, m2 = limit_slopes_monotone(f1, f2, x_1, x_2, m1_raw, m2_raw)
-print(f"Endpoint slopes (raw -> limited): m1 {m1_raw:.6f} -> {m1:.6f},  m2 {m2_raw:.6f} -> {m2:.6f}")
+    m1, m2 = limit_slopes_monotone(f1, f2, x_1, x_2, m1_raw, m2_raw)
+    print(f"Endpoint slopes (raw -> limited): m1 {m1_raw:.6f} -> {m1:.6f},  m2 {m2_raw:.6f} -> {m2:.6f}")
 
-# 3c) Build the hybrid EOS: BPS for x<x1, Hermite on [x1,x2], BBP for x>x2
-# Use the original tabulated (sorted, de-duped) points to keep native resolution.
-# Build hybrid arrays
-bps_left_mask  = bps_df['x'].values < x_1
-bbp_right_mask = bbp_df['x'].values > x_2
-bps_left_x = bps_df['x'].values[bps_left_mask]
-bps_left_y = bps_df['y'].values[bps_left_mask]
-bbp_right_x = bbp_df['x'].values[bbp_right_mask]
-bbp_right_y = bbp_df['y'].values[bbp_right_mask]
+    # 3c) Build the hybrid EOS: BPS for x<x1, Hermite on [x1,x2], BBP for x>x2
+    # Use the original tabulated (sorted, de-duped) points to keep native resolution.
+    # Build hybrid arrays
+    bps_left_mask  = bps_df['x'].values < x_1
+    bbp_right_mask = bbp_df['x'].values > x_2
+    bps_left_x = bps_df['x'].values[bps_left_mask]
+    bps_left_y = bps_df['y'].values[bps_left_mask]
+    bbp_right_x = bbp_df['x'].values[bbp_right_mask]
+    bbp_right_y = bbp_df['y'].values[bbp_right_mask]
 
-trans_x = np.linspace(x_1, x_2, 200)
-trans_y = np.array([cubic_hermite(xx, x_1, x_2, f1, f2, m1, m2) for xx in trans_x])
+    trans_x = np.linspace(x_1, x_2, 200)
+    trans_y = np.array([cubic_hermite(xx, x_1, x_2, f1, f2, m1, m2) for xx in trans_x])
 
-# --- Monotone flank guard (physically dP/dρ ≥ 0) ---
+    # --- Monotone flank guard (physically dP/dρ ≥ 0) ---
 
-# Enforce non-decreasing y on the left flank (BPS)
-if bps_left_y.size:
-    bps_left_y = np.maximum.accumulate(bps_left_y)  # isotonic correction
-    # Ensure no downward jump into the transition start
-    bps_left_y[-1] = min(bps_left_y[-1], f1)
+    # Enforce non-decreasing y on the left flank (BPS)
+    if bps_left_y.size:
+        bps_left_y = np.maximum.accumulate(bps_left_y)  # isotonic correction
+        # Ensure no downward jump into the transition start
+        bps_left_y[-1] = min(bps_left_y[-1], f1)
 
-# Enforce non-decreasing y on the right flank (BBP)
-if bbp_right_y.size:
-    # Ensure no downward jump out of the transition end
-    bbp_right_y[0] = max(bbp_right_y[0], f2)
-    bbp_right_y = np.maximum.accumulate(bbp_right_y)
+    # Enforce non-decreasing y on the right flank (BBP)
+    if bbp_right_y.size:
+        # Ensure no downward jump out of the transition end
+        bbp_right_y[0] = max(bbp_right_y[0], f2)
+        bbp_right_y = np.maximum.accumulate(bbp_right_y)
 
-hybrid_log_rho = np.concatenate([bps_left_x, trans_x, bbp_right_x])
-hybrid_log_P   = np.concatenate([bps_left_y, trans_y, bbp_right_y])
+    hybrid_log_rho = np.concatenate([bps_left_x, trans_x, bbp_right_x])
+    hybrid_log_P   = np.concatenate([bps_left_y, trans_y, bbp_right_y])
 
 # Diagnostics: monotonicity in log–log (allow tiny plateaus)
 dlogP = np.diff(hybrid_log_P); dlogR = np.diff(hybrid_log_rho)
@@ -490,17 +531,17 @@ dP_drho = Gamma1 * (P / rho)
 # Optional: enforce strictly increasing P(ρ) for codes that demand it
 strict = False  # set True if your downstream needs strictly increasing P
 if strict:
-    # tiny seam nudges to avoid any zero finite-difference
     eps_logP = 1e-7
-    # identify the two seam x's used above: x_1 (BPS->BBP) and x2 (hybrid->poly)
-    # nudge immediate neighbors if needed
-    for seam_x in [x_1, x2]:  # x2 from the hybrid->poly block
+    for seam_x in [x_1, x2]:
         i = np.searchsorted(unified_log_rho, seam_x)
         i = min(max(i, 1), len(unified_log_rho)-1)
         if unified_log_P[i] <= unified_log_P[i-1]:
             unified_log_P[i] = unified_log_P[i-1] + eps_logP
-    # recompute linear arrays and derivatives after nudges
+    # recompute *everything* derived from unified_log_P
     P   = 10.0**unified_log_P
+    Gamma1[1:-1] = (unified_log_P[2:] - unified_log_P[:-2]) / (unified_log_rho[2:] - unified_log_rho[:-2])
+    Gamma1[0]    = (unified_log_P[1] - unified_log_P[0]) / (unified_log_rho[1] - unified_log_rho[0])
+    Gamma1[-1]   = (unified_log_P[-1] - unified_log_P[-2]) / (unified_log_rho[-1] - unified_log_rho[-2])
     dP_drho = Gamma1 * (P / rho)
 
 # Energy density ε(ρ) via the cold-EOS identity
@@ -532,7 +573,6 @@ assert np.all(np.diff(P) >= -1e-20), "Non-monotone P detected."
 assert np.all(Gamma1 >= -1e-12), "Negative Gamma1 detected."
 
 # Write
-out_path = "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/unified_eos_magnetic_BPS-BBP-Polytrope_B_001.csv"
 out.to_csv(out_path, index=False)
 print(f"Exported unified EOS to {out_path}  (rows={len(out)})")
 
