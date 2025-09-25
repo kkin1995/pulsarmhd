@@ -7,6 +7,9 @@
 #include <vector>
 #include <cmath>
 #include <iostream>
+#include <fstream>    // ifstream/ofstream
+#include <sstream>    // stringstream
+#include <iomanip>    // setw, setprecision
 
 // Constructor: Initializes configuration parameters and loads atomic mass data.
 MagneticBPSEOS::MagneticBPSEOS(const std::string& atomic_mass_file, double B_ratio_electron, double rel_tol, double abs_tol) 
@@ -145,13 +148,10 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
     double total_mass_density = 0.0;
 
     for (const auto& nucleus : atomic_masses_) {
-        int A = nucleus.A;
-        int Z = nucleus.Z;
-        double mass = nucleus.M;
-
-        if (mass <= 0) {
-            continue;
-        }
+        const int    A    = nucleus.A;
+        const int    Z    = nucleus.Z;
+        const double mass = nucleus.M;
+        if (mass <= 0) continue;
 
         double mass_energy = mass * 931.494 * 1.602e-6; // Convert u to MeV, then to erg
 
@@ -168,7 +168,7 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
         double gamma_e_lower = 1.0 + 1e-10;
         double gamma_e_upper = std::max(gamma_e_lower, sqrt(1.0 + x_e * x_e));
 
-        double nu_m = 0.0;
+        int nu_m = 0;
         double relative_error = 0.0;
         bool converged = false;
         const int MAX_ITERATIONS = 100;
@@ -179,80 +179,158 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
         double rel_tolerance = 1.0e-6;
         double abs_tolerance = 1.0e-8;
 
-        while (fabs(gamma_e_upper - gamma_e_lower) > abs_tolerance * gamma_e) {
-            if (iterations > MAX_ITERATIONS) {
-                converged = false;
-                break;
+        if (B_ratio_electron_ <= 0.0) {
+            // Charge neutrality gives n_e directly
+            calculated_electron_density = electron_density;
+
+            double x = pow(3.0 * M_PI * M_PI * pow(lambda_e,3.0) * calculated_electron_density, 1.0/3.0);
+            auto asinhx = [](double z){ return log(z + sqrt(1.0 + z*z)); };
+
+            double pref = (m_electron * c * c) / (8.0 * M_PI * M_PI * pow(lambda_e,3.0));
+            calculated_electron_pressure =
+                pref * ( x*((2.0*x*x)/3.0 - 1.0)*sqrt(1.0 + x*x) + asinhx(x) );
+            calculated_electron_energy_density =
+                pref * ( x*(2.0*x*x + 1.0)*sqrt(1.0 + x*x) - asinhx(x) );
+
+            gamma_e = sqrt(1.0 + x*x);
+
+            nu_m = 0.0;         // continuum limit, but store 0 for bookkeeping
+            relative_error = 0.0;
+            converged = true;   // closed-form, no iteration
+
+            iterations = 1;     // for reporting
+
+            double lattice_energy_density = - 1.444 * pow(Z, 2.0 / 3.0) * e_charge * e_charge * pow(calculated_electron_density, 4.0 / 3.0);
+            double lattice_pressure = lattice_energy_density / 3.0;
+
+            double total_energy_density = nucleon_density * mass_energy + calculated_electron_energy_density + lattice_energy_density;
+            total_pressure = calculated_electron_pressure + lattice_pressure;
+            
+            total_mass_density = total_energy_density / (c * c);
+
+            double gibbs_free_energy = (mass_energy / A) + (Z / A) * ((gamma_e * m_electron * c * c) - (m_electron * c * c)) + ((4.0 / 3.0) * ((Z * lattice_energy_density) / (A * calculated_electron_density)));
+
+            if (gibbs_free_energy < best_composition.gibbs_free_energy && total_pressure > 0 && converged) {
+                // Update best composition
+                best_composition.optimal_A = A;
+                best_composition.optimal_Z = Z;
+                best_composition.optimal_element = nucleus.element;
+                best_composition.gibbs_free_energy = gibbs_free_energy;
+                best_composition.total_energy_density = total_energy_density;
+                best_composition.total_pressure = total_pressure;
+                best_composition.total_mass_density = total_mass_density;
+                best_composition.electron_density = calculated_electron_density;
+                best_composition.electron_energy_density = calculated_electron_energy_density;
+                best_composition.electron_pressure = calculated_electron_pressure;
+                best_composition.gamma_e = gamma_e;
+                best_composition.max_landau_level = nu_m;
+                best_composition.lattice_energy_density = lattice_energy_density;
+                best_composition.lattice_pressure = lattice_pressure;
+                best_composition.converged = true;
+                best_composition.relative_error = fabs(relative_error);
+                best_composition.iterations = iterations;
             }
+            continue;
+        } else {
+             // Degenerate collapsed-bounds guard: treat as ν_max = 0 case
+            if (std::fabs(gamma_e_upper - gamma_e_lower) <= abs_tolerance * gamma_e) {
+                gamma_e = gamma_e_upper;
+                nu_m = 0;
+                // ν=0 sums (identical to loop, but explicit)
+                double x2 = gamma_e*gamma_e - 1.0;                // x_e(ν=0)^2
+                double x  = (x2 > 0.0) ? std::sqrt(x2) : 0.0;
 
-            iterations++;
+                // Summations for ν=0
+                double summation              = x;                 // (ν=0) no factor 2
+                double summation_energy_state = psi( x / std::sqrt(1.0) ); // psi(x)
+                double summation_pressure_st  = eta( x / std::sqrt(1.0) ); // eta(x)
 
-            gamma_e = (gamma_e_lower + gamma_e_upper) / 2.0;
+                const double pref = (2.0 * B_ratio_electron_) / (4.0 * M_PI * M_PI * std::pow(lambda_e, 3.0));
+                calculated_electron_density        = pref * summation;
+                calculated_electron_energy_density = pref * (m_electron * (c*c)) * summation_energy_state;
+                calculated_electron_pressure       = pref * (m_electron * (c*c)) * summation_pressure_st;
 
-            nu_m = floor((pow(gamma_e, 2.0) - 1.0) / (2.0 * B_ratio_electron_));
-            nu_m = std::max(nu_m, 0.0);
-
-            double summation = 0.0;
-            double summation_energy_density = 0.0;
-            double summation_pressure = 0.0;
-            for (int nu = 0; nu <= nu_m; nu++) {
-                double term_inside_square_root = pow(gamma_e, 2.0) - 1.0 - 2.0 * nu * B_ratio_electron_; // x_e(\nu)^2
-                if (term_inside_square_root < 0.0 && nu > 0) break;
-                summation += (nu == 0) ? sqrt(term_inside_square_root) : 2.0 * sqrt(term_inside_square_root);
-
-                summation_energy_density += (nu == 0) ? (1.0 + 2.0 * nu * B_ratio_electron_) * psi(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_)) : 2.0 * (1.0 + 2.0 * nu * B_ratio_electron_) * psi(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_));
-                summation_pressure += (nu == 0) ? (1.0 + 2.0 * nu * B_ratio_electron_) * eta(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_)) : 2.0 * (1.0 + 2.0 * nu * B_ratio_electron_) * eta(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_));
-            }
-
-            calculated_electron_density = (2.0 * B_ratio_electron_) / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * summation;
-            calculated_electron_energy_density = (2.0 * B_ratio_electron_) / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * (m_electron * (c * c)) * summation_energy_density;
-            calculated_electron_pressure = (2.0 * B_ratio_electron_) / (pow(2.0 * M_PI, 2.0) * pow(lambda_e, 3.0)) * (m_electron * (c * c)) * summation_pressure;
-            relative_error = (calculated_electron_density - electron_density) / electron_density;
-
-            if (fabs(relative_error) < rel_tolerance) {
+                relative_error = (calculated_electron_density - electron_density) / electron_density;
                 converged = true;
-                break;
+                iterations = 1;
             } else {
-                if (relative_error > 0) {
-                    gamma_e_upper = gamma_e;
-                } else {
-                    gamma_e_lower = gamma_e;
+                while (fabs(gamma_e_upper - gamma_e_lower) > abs_tolerance * gamma_e) {
+                    if (iterations > MAX_ITERATIONS) {
+                        converged = false;
+                        break;
+                    }
+
+                    iterations++;
+
+                    gamma_e = (gamma_e_lower + gamma_e_upper) / 2.0;
+
+                    nu_m = std::max(0, static_cast<int>(floor((gamma_e * gamma_e - 1.0) / (2.0 * B_ratio_electron_))));
+
+                    double summation = 0.0;
+                    double summation_energy_density = 0.0;
+                    double summation_pressure = 0.0;
+                    for (int nu = 0; nu <= nu_m; nu++) {
+                        double term_inside_square_root = pow(gamma_e, 2.0) - 1.0 - 2.0 * nu * B_ratio_electron_; // x_e(\nu)^2
+                        if (term_inside_square_root < 0.0 && nu > 0) break;
+                        summation += (nu == 0) ? sqrt(term_inside_square_root) : 2.0 * sqrt(term_inside_square_root);
+
+                        summation_energy_density += (nu == 0) ? (1.0 + 2.0 * nu * B_ratio_electron_) * psi(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_)) : 2.0 * (1.0 + 2.0 * nu * B_ratio_electron_) * psi(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_));
+                        summation_pressure += (nu == 0) ? (1.0 + 2.0 * nu * B_ratio_electron_) * eta(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_)) : 2.0 * (1.0 + 2.0 * nu * B_ratio_electron_) * eta(sqrt(term_inside_square_root) / sqrt(1.0 + 2.0 * nu * B_ratio_electron_));
+                    }
+
+                    calculated_electron_density = (2.0 * B_ratio_electron_) / (4.0 * M_PI * M_PI * pow(lambda_e, 3.0)) * summation;
+                    calculated_electron_energy_density = (2.0 * B_ratio_electron_) / (4.0 * M_PI * M_PI * pow(lambda_e, 3.0)) * (m_electron * (c * c)) * summation_energy_density;
+                    calculated_electron_pressure = (2.0 * B_ratio_electron_) / (4.0 * M_PI * M_PI * pow(lambda_e, 3.0)) * (m_electron * (c * c)) * summation_pressure;
+                    relative_error = (calculated_electron_density - electron_density) / electron_density;
+
+                    if (fabs(relative_error) < rel_tolerance) {
+                        converged = true;
+                        break;
+                    } else {
+                        if (relative_error > 0) {
+                            gamma_e_upper = gamma_e;
+                        } else {
+                            gamma_e_lower = gamma_e;
+                        }
+                    }
+                }
+                if (!converged) {
+                    continue; // try next nucleus
                 }
             }
+
+            double lattice_energy_density = - 1.444 * pow(Z, 2.0 / 3.0) * e_charge * e_charge * pow(calculated_electron_density, 4.0 / 3.0);
+            double lattice_pressure = lattice_energy_density / 3.0;
+
+            double total_energy_density = nucleon_density * mass_energy + calculated_electron_energy_density + lattice_energy_density;
+            total_pressure = calculated_electron_pressure + lattice_pressure;
+            
+            total_mass_density = total_energy_density / (c * c);
+
+            double gibbs_free_energy = (mass_energy / A) + (Z / A) * ((gamma_e * m_electron * c * c) - (m_electron * c * c)) + ((4.0 / 3.0) * ((Z * lattice_energy_density) / (A * calculated_electron_density)));
+
+            if (gibbs_free_energy < best_composition.gibbs_free_energy && total_pressure > 0 && converged) {
+                // Update best composition
+                best_composition.optimal_A = A;
+                best_composition.optimal_Z = Z;
+                best_composition.optimal_element = nucleus.element;
+                best_composition.gibbs_free_energy = gibbs_free_energy;
+                best_composition.total_energy_density = total_energy_density;
+                best_composition.total_pressure = total_pressure;
+                best_composition.total_mass_density = total_mass_density;
+                best_composition.electron_density = calculated_electron_density;
+                best_composition.electron_energy_density = calculated_electron_energy_density;
+                best_composition.electron_pressure = calculated_electron_pressure;
+                best_composition.gamma_e = gamma_e;
+                best_composition.max_landau_level = nu_m;
+                best_composition.lattice_energy_density = lattice_energy_density;
+                best_composition.lattice_pressure = lattice_pressure;
+                best_composition.converged = true;
+                best_composition.relative_error = fabs(relative_error);
+                best_composition.iterations = iterations;
+            } 
         }
-
-        double lattice_energy_density = - 1.444 * pow(Z, 2.0 / 3.0) * pow(e_charge, 2.0) * pow(calculated_electron_density, 4.0 / 3.0);
-        double lattice_pressure = lattice_energy_density / 3.0;
-
-        double total_energy_density = nucleon_density * mass_energy + calculated_electron_energy_density + lattice_energy_density;
-        total_pressure = calculated_electron_pressure + lattice_pressure;
-        
-        total_mass_density = total_energy_density / (c * c);
-
-        double gibbs_free_energy = (mass_energy / A) + (Z / A) * ((gamma_e * m_electron * c * c) - (m_electron * c * c)) + ((4.0 / 3.0) * ((Z * lattice_energy_density) / (A * electron_density)));
-
-        if (gibbs_free_energy < best_composition.gibbs_free_energy && total_pressure > 0 && converged) {
-            // Update best composition
-            best_composition.optimal_A = A;
-            best_composition.optimal_Z = Z;
-            best_composition.optimal_element = nucleus.element;
-            best_composition.gibbs_free_energy = gibbs_free_energy;
-            best_composition.total_energy_density = total_energy_density;
-            best_composition.total_pressure = total_pressure;
-            best_composition.total_mass_density = total_mass_density;
-            best_composition.electron_density = calculated_electron_density;
-            best_composition.electron_energy_density = calculated_electron_energy_density;
-            best_composition.electron_pressure = calculated_electron_pressure;
-            best_composition.gamma_e = gamma_e;
-            best_composition.max_landau_level = nu_m;
-            best_composition.lattice_energy_density = lattice_energy_density;
-            best_composition.lattice_pressure = lattice_pressure;
-            best_composition.converged = true;
-            best_composition.relative_error = fabs(relative_error);
-            best_composition.iterations = iterations;
-        } 
-    } // End loop over atomic_masses_
-    
+    }
     return best_composition;
 }
 
