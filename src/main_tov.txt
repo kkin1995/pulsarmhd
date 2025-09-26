@@ -169,7 +169,7 @@ int main() {
     double base_dlogr = 0.0001;  // Base step size in log(r)
     
     // Load EOS data
-    std::string eos_filename = "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/unified_eos_magnetic_BPS-BBP-Polytrope_b_0e-00.csv";
+    std::string eos_filename = "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/unified_eos_magnetic_BPS-BBP-Polytrope_b_1e-05.csv";
 
     if (readEoSData(eos_filename, log_rho, log_P, epsilon)) {
 
