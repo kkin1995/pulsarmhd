@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+#ifdef _OPENMP
+  #include <omp.h>
+#endif
+
 namespace fs = std::filesystem;
 
 // --------- EDIT THESE FEW LINES TO CHANGE THE RUN ----------
@@ -16,12 +20,12 @@ struct Config {
     std::string masses_path = "data/atomic_masses.csv";
 
     // Single b value (dimensionless B/B_Q, with B_Q = 4.414e13 G)
-    double b = 1e-4;
+    double b = 1e-5;
 
     // Baryon density grid (cm^-3), log-spaced internally by MagneticBPSEOS
     double nB_min = 1e28;
-    double nB_max = 1e35;
-    int    nB_pts = 100;
+    double nB_max = 3e36;
+    int    nB_pts = 250;
 
     // Electron solver tolerances
     double rel_tol = 1e-6;
@@ -57,6 +61,15 @@ int main() {
               << "nB grid (cm^-3): [" << cfg.nB_min << ", " << cfg.nB_max
               << "] with N=" << cfg.nB_pts << "\n"
               << "Tolerances    : rel=" << cfg.rel_tol << " abs=" << cfg.abs_tol << "\n";
+
+    #ifdef _OPENMP
+    // hard-set thread team size (overrides env for this process)
+    omp_set_dynamic(0);              // keep team size fixed
+    omp_set_num_threads(8);          // pick your number here
+    std::cout << "[OpenMP] max_threads=" << omp_get_max_threads()
+              << ", dynamic=" << omp_get_dynamic()
+              << ", nested=" << omp_get_nested() << "\n";
+    #endif
 
     // Instantiate EOS at this b
     MagneticBPSEOS eos(cfg.masses_path, /*B_ratio_electron=*/cfg.b,
