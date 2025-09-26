@@ -1,6 +1,6 @@
 # Compiler and flags
 CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O3
+CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O3 -march=native -fopenmp
 DEBUG_FLAGS := -g -DDEBUG
 
 # Directory structure
@@ -109,12 +109,12 @@ $(REQUIRED_DIRS):
 # Main program
 $(MAIN_BIN): $(OBJS) | $(BIN_DIR)
 	@echo "Linking $@..."
-	$(CXX) $(OBJS) -o $@ $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OBJS) -o $@ $(LIBS)
 
 # Test program
 $(TEST_BIN): $(MAIN_OBJS) $(TEST_OBJS) | $(TEST_BIN_DIR)
 	@echo "Linking $@..."
-	$(CXX) $(MAIN_OBJS) $(TEST_OBJS) -o $@ $(TEST_LIBS)
+	$(CXX) $(CXXFLAGS) $(MAIN_OBJS) $(TEST_OBJS) -o $@ $(TEST_LIBS)
 
 # Compile main source files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR) $(DEP_DIR)
