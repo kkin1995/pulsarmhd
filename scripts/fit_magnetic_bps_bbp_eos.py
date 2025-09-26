@@ -134,9 +134,9 @@ def linear_interpolation(x, x1, x2, y1, y2):
 
 # READING DATA
 bbp_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bbp.csv")
-magnetic_bps_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bps_single_b_b_0e_00.csv")
+magnetic_bps_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bps_single_b_b_1e-05.csv")
 bps_data = pd.read_csv("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bps.csv")
-out_path = "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/unified_eos_magnetic_BPS-BBP-Polytrope_b_0e-00.csv"
+out_path = "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/unified_eos_magnetic_BPS-BBP-Polytrope_b_1e-05.csv"
 
 # rho,P,nb,A,Z,Gamma
 log_rho_bbp = np.log10(bbp_data["rho"].values)
@@ -600,7 +600,7 @@ plt.title("Unified EOS (log–log)")
 plt.grid(True, alpha=0.3)
 plt.legend(loc="best", frameon=True)
 plt.tight_layout()
-plt.savefig("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/plots/unified_eos_magnetic_BPS-BBP-Polytrope_B_001.png", dpi=200)
+plt.savefig("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/plots/unified_eos_magnetic_BPS-BBP-Polytrope.png", dpi=200)
 
 
 # --- 2) Adiabatic index Γ1 = d ln P / d ln rho ---
@@ -629,4 +629,4 @@ plt.title("Adiabatic Index of Unified EOS")
 plt.grid(True, alpha=0.3)
 plt.legend(loc="best", frameon=True)
 plt.tight_layout()
-plt.savefig("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/plots/unified_eos_magnetic_BPS-BBP-Polytrope_B_001_gamma.png", dpi=200)
+plt.savefig("/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/plots/unified_eos_magnetic_BPS-BBP-Polytrope_gamma.png", dpi=200)
