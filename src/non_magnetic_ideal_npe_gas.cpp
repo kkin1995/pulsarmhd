@@ -147,7 +147,7 @@ double NonMagneticNPEGas::BetaEquilibriumSolver::solve(double x_n, double n_B, d
     return 1;
   }
 
-  status = gsl_root_fsolver_set(s, &F, x_lo, x_hi);
+  (void)gsl_root_fsolver_set(s, &F, x_lo, x_hi);
 
   int iter = 0, max_iter = 200;
   double x;
@@ -157,8 +157,8 @@ double NonMagneticNPEGas::BetaEquilibriumSolver::solve(double x_n, double n_B, d
     // double f_value = f(x0, &params);
     // double f_prime_value = f_prime(x0, &params);
 
-    status = gsl_root_fsolver_iterate(s); // Perform an iteration
-    x = gsl_root_fsolver_root(s);         // Current root estimate
+    (void)gsl_root_fsolver_iterate(s); // Perform an iteration
+    x = gsl_root_fsolver_root(s);      // Current root estimate
 
     // Convergence test based on the change in x
     status = gsl_root_test_delta(x, x0, 0, 1e-6);
