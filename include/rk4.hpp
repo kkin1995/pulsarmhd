@@ -112,8 +112,8 @@
  * @note Explicit, single-step method suitable for non-stiff systems
  * @warning Not efficient for stiff differential equations
  */
-std::vector<double>
-rk4_step(double t, double dt, const std::vector<double> &state,
-         const std::function<std::vector<double>(double, const std::vector<double> &)> derivatives);
+std::vector<double> rk4_step(
+    double t, double dt, const std::vector<double> &state,
+    const std::function<std::vector<double>(double, const std::vector<double> &)> &derivatives);
 
 #endif // RK4_HPP
