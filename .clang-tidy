@@ -1,0 +1,7 @@
+Checks: >
+  bugprone-*,clang-analyzer-*,cppcoreguidelines-*,modernize-*,performance-*,readability-*
+  ,-cppcoreguidelines-avoid-magic-numbers
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^(include|src)/'
+AnalyzeTemporaryDtors: true
+FormatStyle: none
