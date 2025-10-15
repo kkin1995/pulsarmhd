@@ -3,6 +3,12 @@ CXX := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O3 -march=native -fopenmp
 DEBUG_FLAGS := -g -DDEBUG
 
+# Promote warnings to errors in CI only (keeps local builds flexible)
+ifdef CI
+CXXFLAGS += -Werror
+endif
+
+
 # Directory structure
 SRC_DIR := src
 INC_DIR := include
@@ -189,8 +195,17 @@ ubsan:
 
 # Static analysis helpers (non-fatal). Requires compile_commands.json.
 tidy:
+	@if ! command -v clang-tidy >/dev/null 2>&1; then \
+		echo "clang-tidy not found. Install: sudo apt install clang-tidy"; exit 1; fi
+	@if [ ! -f compile_commands.json ]; then echo "Run 'make compdb' first."; exit 1; fi
+	clang-tidy -p . $(SRCS) || true
+
+tidy-all:
+	@if ! command -v clang-tidy >/dev/null 2>&1; then \
+		echo "clang-tidy not found. Install: sudo apt install clang-tidy"; exit 1; fi
 	@if [ ! -f compile_commands.json ]; then echo "Run 'make compdb' first."; exit 1; fi
 	clang-tidy -p . $(SRCS) $(TEST_SRCS) || true
+
 
 cppcheck:
 	@echo "Running cppcheck (non-fatal)..."
