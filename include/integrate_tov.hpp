@@ -20,9 +20,9 @@ struct IntegrateOpts {
   int progress_stride = 1000;
 };
 
-inline TovResult integrate_structure(const EOSView &eos, GravityModel grav, MassSource mass_src,
-                                     double rho_c, double log_m0, double log_p0,
-                                     const IntegrateOpts &opts) {
+TovResult integrate_structure(const EOSView &view, GravityModel grav, MassSource mass_src,
+                              [[maybe_unused]] double rho_c, double log_m0, double log_p0,
+                              const IntegrateOpts &opts) {
   std::ofstream outfile;
   const bool write_output = opts.output_filename.has_value();
   if (write_output) {
@@ -46,9 +46,11 @@ inline TovResult integrate_structure(const EOSView &eos, GravityModel grav, Mass
   std::vector<double> state_prev = state;
 
   while (log_r < log_r_end) {
-    state = rk4_step(log_r, current_dlogr, state, [&](double r, const std::vector<double> &s) {
-      return tov_derivatives(r, s, eos, grav, mass_src);
-    });
+    state = rk4_step(log_r, current_dlogr, state,
+                     // capture view by reference (or value), along with grav & mass_src
+                     [&view, grav, mass_src](double r, const std::vector<double> &s) {
+                       return tov_derivatives(r, s, view, grav, mass_src);
+                     });
 
     log_r += current_dlogr;
 

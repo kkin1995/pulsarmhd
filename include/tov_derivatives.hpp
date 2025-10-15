@@ -48,7 +48,7 @@ inline std::vector<double> tov_derivatives(double log_r, const std::vector<doubl
     double third_factor = 1.0 + ((4.0 * M_PI * P * r * r * r) / (m_safe * c * c));
     double fourth_factor = 1.0 / (1.0 - ((2.0 * G * m_safe) / (r * c * c)));
 
-    double dlogP_dlogr = (first_factor * second_factor * third_factor * fourth_factor);
+    dlogP_dlogr = (first_factor * second_factor * third_factor * fourth_factor);
   }
 
   return {dlogm_dlogr, dlogP_dlogr};
