@@ -25,8 +25,7 @@ MagneticBPSEOS::MagneticBPSEOS(const std::string &atomic_mass_file, double B_rat
     : B_ratio_electron_(B_ratio_electron), rel_tolerance_(rel_tol), abs_tolerance_(abs_tol),
       atomic_masses_(readAtomicMasses(atomic_mass_file)) {
   if (atomic_masses_.empty()) {
-    std::cerr << "Error: Atomic mass data could not be loaded from " << atomic_mass_file
-              << std::endl;
+    std::cerr << "Error: Atomic mass data could not be loaded from " << atomic_mass_file << '\n';
   }
 }
 
@@ -47,7 +46,7 @@ std::vector<AtomicMass> MagneticBPSEOS::readAtomicMasses(const std::string &file
   std::string line;
 
   if (!file.is_open()) {
-    std::cerr << "Error: Could not open file " << filename << std::endl;
+    std::cerr << "Error: Could not open file " << filename << '\n';
     return atomicMasses;
   }
 
@@ -81,19 +80,20 @@ std::vector<AtomicMass> MagneticBPSEOS::readAtomicMasses(const std::string &file
 }
 
 // Function to find M(A, Z) for given A and Z
-double MagneticBPSEOS::getAtomicMass(int A, int Z) const {
+auto MagneticBPSEOS::getAtomicMass(int A, int Z) const -> double {
   for (const auto &entry : atomic_masses_) {
     if (entry.A == A && entry.Z == Z) {
       return entry.M;
     }
   }
-  std::cerr << "Error: No data found for A=" << A << " Z=" << Z << std::endl;
+  std::cerr << "Error: No data found for A=" << A << " Z=" << Z << '\n';
   return -1.0; // Return an error value if not found
 }
 
 double MagneticBPSEOS::psi(double x) {
-  if (fabs(x) < 1e-12)
+  if (fabs(x) < 1e-12) {
     return 0.0;
+  }
 
   double first_term = (1.0 / 2.0) * x * sqrt(1.0 + (x * x));
   double second_term = (1.0 / 2.0) * std::log(x + sqrt(1.0 + (x * x)));
@@ -102,8 +102,9 @@ double MagneticBPSEOS::psi(double x) {
 }
 
 double MagneticBPSEOS::eta(double x) {
-  if (fabs(x) < 1e-12)
+  if (fabs(x) < 1e-12) {
     return 0.0;
+  }
 
   double first_term = (1.0 / 2.0) * x * sqrt(1.0 + (x * x));
   double second_term = (1.0 / 2.0) * std::log(x + sqrt(1.0 + (x * x)));
@@ -117,8 +118,7 @@ void MagneticBPSEOS::printEquilibriumTable(
   std::cout << std::scientific << std::setprecision(4);
   std::cout << std::setw(12) << "Density" << std::setw(8) << "A" << std::setw(8) << "Z"
             << std::setw(8) << "Element" << std::setw(15) << "Gibbs Energy" << std::setw(15)
-            << "Pressure" << std::setw(15) << "Mass Density" << std::setw(12) << "ν_max"
-            << std::endl;
+            << "Pressure" << std::setw(15) << "Mass Density" << std::setw(12) << "ν_max" << '\n';
 
   for (const auto &comp : results) {
     std::cout << std::setw(12) << comp.baryon_density << std::setw(8) << comp.optimal_A
@@ -126,8 +126,7 @@ void MagneticBPSEOS::printEquilibriumTable(
               << std::setw(15) << comp.gibbs_free_energy << std::setw(15) << comp.total_pressure
               << std::setw(15) << comp.total_mass_density;
     // Print Landau level separately to ensure proper spacing
-    std::cout << std::setw(12) << comp.max_landau_level << (comp.converged ? "" : " *")
-              << std::endl;
+    std::cout << std::setw(12) << comp.max_landau_level << (comp.converged ? "" : " *") << '\n';
   }
 }
 
@@ -135,7 +134,7 @@ void MagneticBPSEOS::writeEOSResults(const std::string &output_file,
                                      const std::vector<EquilibriumComposition> &results) const {
   std::ofstream outfile(output_file);
   if (!outfile.is_open()) {
-    std::cerr << "Error: Could not open file " << output_file << std::endl;
+    std::cerr << "Error: Could not open file " << output_file << '\n';
     return;
   }
   outfile << "log_n,log_rho,log_P\n";
@@ -160,13 +159,13 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
   const double abs_tolerance = 1.0e-8;
   const int MAX_ITERATIONS = 100;
 
-  for (int i = 0; i < (int)atomic_masses_.size(); ++i) {
-    const auto &nucleus = atomic_masses_[i];
+  for (const auto &nucleus : atomic_masses_) {
     const int A = nucleus.A;
     const int Z = nucleus.Z;
     const double mass = nucleus.M;
-    if (mass <= 0)
+    if (mass <= 0) {
       continue;
+    }
 
     const double mass_energy = mass * 931.494 * 1.602e-6; // Convert u to MeV, then to erg
 
@@ -250,8 +249,9 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
           for (int nu = 0; nu <= nu_m; nu++) {
             double term_inside_square_root =
                 pow(gamma_e, 2.0) - 1.0 - 2.0 * nu * B_ratio_electron_; // x_e(\nu)^2
-            if (term_inside_square_root < 0.0 && nu > 0)
+            if (term_inside_square_root < 0.0 && nu > 0) {
               break;
+            }
             summation +=
                 (nu == 0) ? sqrt(term_inside_square_root) : 2.0 * sqrt(term_inside_square_root);
 
@@ -280,15 +280,14 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
                                          (m_electron * (c * c)) * summation_pressure;
           relative_error = (calculated_electron_density - electron_density) / electron_density;
 
-          if (fabs(relative_error) < rel_tolerance) {
-            converged = true;
-            break;
+          if (std::fabs(relative_error) < rel_tolerance) {
+            break; // done
+          }
+
+          if (relative_error > 0) {
+            gamma_e_upper = gamma_e;
           } else {
-            if (relative_error > 0) {
-              gamma_e_upper = gamma_e;
-            } else {
-              gamma_e_lower = gamma_e;
-            }
+            gamma_e_lower = gamma_e;
           }
         }
         if (!converged) {
@@ -307,7 +306,9 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
     const double total_mass_density = total_energy_density / (c * c);
 
     double gibbs_free_energy =
-        (mass_energy / A) + (Z / A) * ((gamma_e * m_electron * c * c) - (m_electron * c * c)) +
+        (mass_energy / A) +
+        (static_cast<double>(Z) / static_cast<double>(A)) *
+            ((gamma_e * m_electron * c * c) - (m_electron * c * c)) +
         ((4.0 / 3.0) * ((Z * lattice_energy_density) / (A * calculated_electron_density)));
 
     if (gibbs_free_energy < best_composition.gibbs_free_energy && total_pressure > 0 && converged) {
@@ -364,12 +365,14 @@ std::vector<EquilibriumComposition> MagneticBPSEOS::runSimulation(double nB_min,
     // collect stats
     sum_iters += comp.iterations;
     sum_nu += static_cast<int>(comp.max_landau_level);
-    if (comp.iterations > max_iters)
+    if (comp.iterations > max_iters) {
       max_iters = comp.iterations;
+    }
     // Landau level is an integer count; round to nearest and clamp at >= 0
     const int level = static_cast<int>(std::lround(comp.max_landau_level));
-    if (level > max_nu)
+    if (level > max_nu) {
       max_nu = level;
+    }
 
     int done = completed.fetch_add(1, std::memory_order_relaxed) + 1;
 

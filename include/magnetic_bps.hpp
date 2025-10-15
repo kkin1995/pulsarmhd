@@ -233,9 +233,9 @@ public:
 
 private:
   // Configuration parameters
-  double B_ratio_electron_; ///< Ratio of magnetic field to critical field (B/B_c)
-  double rel_tolerance_;    ///< Relative tolerance for convergence
-  double abs_tolerance_;    ///< Absolute tolerance for convergence
+  double B_ratio_electron_;               ///< Ratio of magnetic field to critical field (B/B_c)
+  [[maybe_unused]] double rel_tolerance_; ///< Relative tolerance for convergence
+  [[maybe_unused]] double abs_tolerance_; ///< Absolute tolerance for convergence
 
   /// @brief Vector storing nuclear mass and property data
   /// @details Contains information about different nuclei including mass numbers,
@@ -302,7 +302,7 @@ private:
    * @throws Outputs error message to cerr if nucleus is not found in the database
    * @return -1.0 if nucleus not found, actual mass otherwise
    */
-  double getAtomicMass(int A, int Z) const;
+  [[nodiscard]] auto getAtomicMass(int A, int Z) const -> double;
 
   /**
    * @brief Generates a logarithmically spaced array of baryon densities

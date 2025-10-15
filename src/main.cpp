@@ -49,9 +49,11 @@ bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
     }
   }
   auto find_col = [&](const std::string &name) -> int {
-    for (size_t i = 0; i < cols.size(); ++i)
-      if (cols[i] == name)
+    for (size_t i = 0; i < cols.size(); ++i) {
+      if (cols[i] == name) {
         return (int)i;
+      }
+    }
     return -1;
   };
 
@@ -62,10 +64,12 @@ bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
 
   // allow several spellings for epsilon (energy density, erg/cm^3)
   int i_eps = find_col("epsilon");
-  if (i_eps < 0)
+  if (i_eps < 0) {
     i_eps = find_col("energy_density");
-  if (i_eps < 0)
+  }
+  if (i_eps < 0) {
     i_eps = find_col("eps");
+  }
 
   enum class Mode { USE_LOGS, USE_LINEAR, FALLBACK_FIRST_TWO } mode;
   if (i_logrho >= 0 && i_logp >= 0) {
@@ -80,15 +84,17 @@ bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
     i_logp = 1;
     std::cout << "[EoS] Header unrecognized; assuming first two columns are log_rho,log_P";
   }
-  if (i_eps >= 0)
+  if (i_eps >= 0) {
     std::cout << " + epsilon\n";
-  else
+  } else {
     std::cout << "\n";
+  }
 
   std::string line;
   while (std::getline(file, line)) {
-    if (line.empty())
+    if (line.empty()) {
       continue;
+    }
     std::vector<std::string> toks;
     {
       std::stringstream ss(line);
@@ -100,8 +106,9 @@ bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
         toks.push_back(t);
       }
     }
-    if (toks.size() < 2)
+    if (toks.size() < 2) {
       continue;
+    }
 
     try {
       double lr = 0, lp = 0;
@@ -111,26 +118,29 @@ bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
       } else if (mode == Mode::USE_LINEAR) {
         double rho = std::stod(toks[(size_t)i_rho]);
         double P = std::stod(toks[(size_t)i_p]);
-        if (!(rho > 0.0 && P > 0.0))
+        if (!(rho > 0.0 && P > 0.0)) {
           continue;
+        }
         lr = std::log10(rho);
         lp = std::log10(P);
       } else { // fallback: first two columns are log10
         lr = std::stod(toks[0]);
         lp = std::stod(toks[1]);
       }
-      if (!std::isfinite(lr) || !std::isfinite(lp))
+      if (!std::isfinite(lr) || !std::isfinite(lp)) {
         continue;
+      }
 
       log_rho.push_back(lr);
       log_P.push_back(lp);
 
       if (i_eps >= 0 && (size_t)i_eps < toks.size()) {
         double e = std::stod(toks[(size_t)i_eps]); // already erg/cm^3
-        if (std::isfinite(e))
+        if (std::isfinite(e)) {
           epsilon.push_back(e);
-        else
+        } else {
           epsilon.push_back(std::numeric_limits<double>::quiet_NaN());
+        }
       }
     } catch (...) {
       continue;
@@ -193,7 +203,7 @@ int main() {
 
   if (readEoSData(eos_filename, log_rho, log_P, epsilon)) {
 
-    std::cout << "Successfully read " << log_rho.size() << " EOS data points." << std::endl;
+    std::cout << "Successfully read " << log_rho.size() << " EOS data points." << '\n';
 
     // --- sort rows by log_P and keep epsilon aligned
     struct Row {
@@ -217,20 +227,24 @@ int main() {
     auto push_row = [&](const Row &r) {
       lp2.push_back(r.lp);
       lr2.push_back(r.lr);
-      if (!epsilon.empty())
+      if (!epsilon.empty()) {
         eps2.push_back(r.has_eps ? r.eps : std::numeric_limits<double>::quiet_NaN());
+      }
     };
-    if (!rows.empty())
+    if (!rows.empty()) {
       push_row(rows.front());
+    }
     for (size_t i = 1; i < rows.size(); ++i) {
-      if (rows[i].lp > lp2.back())
-        push_row(rows[i]); // strict >
+      if (rows[i].lp > lp2.back()) {
+        push_row(rows[i]);
+      } // strict >
     }
 
     log_P.swap(lp2);
     log_rho.swap(lr2);
-    if (!epsilon.empty())
+    if (!epsilon.empty()) {
       epsilon.swap(eps2);
+    }
 
     if (log_P.size() < 2) {
       std::cerr << "EOS has fewer than 2 unique points after cleaning.\n";
@@ -293,7 +307,7 @@ int main() {
     std::cout << "[ScanBuild] rho_c scan: [" << central_densities.front() << ", "
               << central_densities.back() << "] g/cm^3 over " << num_points << " points.\n";
   } else {
-    std::cerr << "Failed to load EOS data. Exiting." << std::endl;
+    std::cerr << "Failed to load EOS data. Exiting." << '\n';
     return 1;
   }
 
@@ -316,7 +330,7 @@ int main() {
   double max_logP = log_P.back();
 
   std::cout << "EOS pressure range: [" << min_logP << ", " << max_logP << "] (log10 dyne/cm²)"
-            << std::endl;
+            << '\n';
 
   // Set up GSL splines for EOS interpolation
   gsl_interp_accel *acc_eps = nullptr;
@@ -351,11 +365,10 @@ int main() {
             << " (rho_at_stop=" << rho_of_logP(logP_stop) << ")\n";
 
   // Generate mass-radius relation by scanning central densities
-  std::cout << "\n=== GENERATING MASS-RADIUS RELATION ===" << std::endl;
-  std::cout << "Computing " << central_densities.size() << " stellar models..." << std::endl;
+  std::cout << "\n=== GENERATING MASS-RADIUS RELATION ===" << '\n';
+  std::cout << "Computing " << central_densities.size() << " stellar models..." << '\n';
 
-  for (size_t i = 0; i < central_densities.size(); ++i) {
-    double rho_c = central_densities[i];
+  for (double rho_c : central_densities) {
     std::ostringstream oss;
     oss << out_file << std::scientific << std::setprecision(2) << rho_c << ".csv";
     std::string filename = oss.str();
@@ -377,23 +390,25 @@ int main() {
     double radius_km = radius_cm / 1e5;        // Convert to kilometers
 
     // Report results
-    std::cout << "Integration completed in " << res.steps << " steps" << std::endl;
-    std::cout << "Final Mass = " << mass_grams << " g = " << mass_solar << " M☉" << std::endl;
-    std::cout << "Final Radius = " << radius_cm << " cm = " << radius_km << " km" << std::endl;
-    std::cout << "Compactness = " << (2.95325 * mass_solar / radius_km) << std::endl;
+    std::cout << "Integration completed in " << res.steps << " steps" << '\n';
+    std::cout << "Final Mass = " << mass_grams << " g = " << mass_solar << " M☉" << '\n';
+    std::cout << "Final Radius = " << radius_cm << " cm = " << radius_km << " km" << '\n';
+    std::cout << "Compactness = " << (2.95325 * mass_solar / radius_km) << '\n';
   }
 
   // Clean up
-  if (spline_eps)
+  if (spline_eps) {
     gsl_spline_free(spline_eps);
-  if (acc_eps)
+  }
+  if (acc_eps) {
     gsl_interp_accel_free(acc_eps);
+  }
   gsl_spline_free(spline_inv);
   gsl_interp_accel_free(acc_inv);
 
-  std::cout << "\n=== COMPUTATION COMPLETE ===" << std::endl;
-  std::cout << "All stellar models computed successfully!" << std::endl;
-  std::cout << "Output files written to data/ directory." << std::endl;
+  std::cout << "\n=== COMPUTATION COMPLETE ===" << '\n';
+  std::cout << "All stellar models computed successfully!" << '\n';
+  std::cout << "Output files written to data/ directory." << '\n';
 
   return 0;
 }

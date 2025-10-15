@@ -114,7 +114,7 @@ int main() {
     std::string filename = "ideal_magnetic_npe_gas_eos.csv";
     std::ofstream outfile(filename);
     if (!outfile.is_open()) {
-        std::cerr << "Error opening file: " << filename << std::endl;
+        std::cerr << "Error opening file: " << filename << '\n';
     }
 
     outfile << "log_n,log_P,log_rho\n";

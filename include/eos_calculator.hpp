@@ -167,7 +167,7 @@ public:
    * @brief Get the type of EOS calculator
    * @return String describing the EOS type
    */
-  virtual std::string getType() const = 0;
+  [[nodiscard]] virtual std::string getType() const = 0;
 };
 
 /**

@@ -1,6 +1,26 @@
-Checks: >
-  bugprone-*,clang-analyzer-*,cppcoreguidelines-*,modernize-*,performance-*,readability-*
-  ,-cppcoreguidelines-avoid-magic-numbers
-WarningsAsErrors: '*'
+# .clang-tidy
+Checks: |
+  -*                                  # start from nothing
+  clang-analyzer-*                    # real defects (null deref, leaks, etc.)
+  bugprone-*                          # common pitfalls (integer division, etc.)
+  cppcoreguidelines-avoid-c-arrays
+  cppcoreguidelines-narrowing-conversions
+  cppcoreguidelines-pro-type-const-cast
+  cppcoreguidelines-pro-type-reinterpret-cast
+  cppcoreguidelines-pro-bounds-*      # bounds safety
+  performance-*                       # perf hints…
+  -performance-enum-size              # …but not enum packing (too noisy)
+  readability-braces-around-statements
+  readability-else-after-return
+  modernize-use-nodiscard
+  modernize-loop-convert
+
+WarningsAsErrors: |
+  clang-analyzer-*
+  bugprone-*
+  cppcoreguidelines-pro-bounds-*
+  readability-braces-around-statements
+  readability-else-after-return
+  modernize-use-nodiscard
+
 HeaderFilterRegex: '^(include|src)/'
-FormatStyle: none

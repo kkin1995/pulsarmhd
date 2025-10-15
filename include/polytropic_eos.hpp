@@ -126,7 +126,7 @@ public:
    * @param type The type of polytropic gas
    * @return PolytropicEOSData containing k, γ, and descriptive information
    */
-  PolytropicEOSData getEOSParameters(PolytropicGasType type) const;
+  [[nodiscard]] auto getEOSParameters(PolytropicGasType type) const -> PolytropicEOSData;
 
   /**
    * @brief Calculate pressure for given density using polytropic EOS
@@ -138,7 +138,7 @@ public:
    * @param gamma Polytropic index
    * @return Pressure in dyne/cm²
    */
-  double calculatePressure(double density, double k, double gamma) const;
+  [[nodiscard]] auto calculatePressure(double density, double k, double gamma) const -> double;
 
   /**
    * @brief Calculate density for given pressure using polytropic EOS
@@ -150,7 +150,7 @@ public:
    * @param gamma Polytropic index
    * @return Density in g/cm³
    */
-  double calculateDensity(double pressure, double k, double gamma) const;
+  [[nodiscard]] auto calculateDensity(double pressure, double k, double gamma) const -> double;
 
   /**
    * @brief Generate a table of EOS values
@@ -161,14 +161,15 @@ public:
    * @param params Parameters controlling the table generation
    * @return true if successful, false otherwise
    */
-  bool generateEOSTable(const PolytropicEOSParameters &params) const;
+  [[nodiscard]] auto generateEOSTable(const PolytropicEOSParameters &params) const -> bool;
 
   /**
    * @brief Get all available gas types with their parameters
    *
    * @return Vector of all supported gas types with their EOS data
    */
-  std::vector<std::pair<PolytropicGasType, PolytropicEOSData>> getAllEOSTypes() const;
+  [[nodiscard]] auto getAllEOSTypes() const
+      -> std::vector<std::pair<PolytropicGasType, PolytropicEOSData>>;
 
   /**
    * @brief Convert gas type enum to string
@@ -197,8 +198,8 @@ private:
    * @param use_log_spacing Whether to use logarithmic spacing
    * @return Vector of density values
    */
-  std::vector<double> createDensityGrid(double rho_min, double rho_max, int num_points,
-                                        bool use_log_spacing) const;
+  [[nodiscard]] auto createDensityGrid(double rho_min, double rho_max, int num_points,
+                                       bool use_log_spacing) const -> std::vector<double>;
 
   /**
    * @brief Write EOS table to file
@@ -210,9 +211,11 @@ private:
    * @param output_log_values Whether to output logarithmic values
    * @return true if successful, false otherwise
    */
-  bool writeEOSToFile(const std::string &filename, const std::vector<double> &densities,
-                      const std::vector<double> &pressures, const PolytropicEOSData &eos_data,
-                      bool output_log_values) const;
+  [[nodiscard]] auto writeEOSToFile(const std::string &filename,
+                                    const std::vector<double> &densities,
+                                    const std::vector<double> &pressures,
+                                    const PolytropicEOSData &eos_data, bool output_log_values) const
+      -> bool;
 };
 
 /**

@@ -76,12 +76,12 @@ bool PolytropicEOS::generateEOSTable(const PolytropicEOSParameters &params) cons
     // Get EOS parameters for the specified gas type
     PolytropicEOSData eos_data = getEOSParameters(params.gas_type);
 
-    std::cout << "Generating polytropic EOS table for: " << eos_data.name << std::endl;
-    std::cout << "  k = " << std::scientific << std::setprecision(4) << eos_data.k << std::endl;
-    std::cout << "  γ = " << std::fixed << std::setprecision(6) << eos_data.gamma << std::endl;
+    std::cout << "Generating polytropic EOS table for: " << eos_data.name << '\n';
+    std::cout << "  k = " << std::scientific << std::setprecision(4) << eos_data.k << '\n';
+    std::cout << "  γ = " << std::fixed << std::setprecision(6) << eos_data.gamma << '\n';
     std::cout << "  ρ range: " << std::scientific << params.rho_min << " to " << params.rho_max
-              << " g/cm³" << std::endl;
-    std::cout << "  Number of points: " << params.num_points << std::endl;
+              << " g/cm³" << '\n';
+    std::cout << "  Number of points: " << params.num_points << '\n';
 
     // Create density grid
     std::vector<double> densities = createDensityGrid(params.rho_min, params.rho_max,
@@ -101,13 +101,13 @@ bool PolytropicEOS::generateEOSTable(const PolytropicEOSParameters &params) cons
                                   params.output_log_values);
 
     if (success) {
-      std::cout << "Successfully wrote EOS table to: " << params.output_file << std::endl;
+      std::cout << "Successfully wrote EOS table to: " << params.output_file << '\n';
     }
 
     return success;
 
   } catch (const std::exception &e) {
-    std::cerr << "Error generating EOS table: " << e.what() << std::endl;
+    std::cerr << "Error generating EOS table: " << e.what() << '\n';
     return false;
   }
 }
@@ -148,15 +148,17 @@ std::string PolytropicEOS::gasTypeToString(PolytropicGasType type) {
 PolytropicGasType PolytropicEOS::stringToGasType(const std::string &str) {
   if (str == "ELECTRON_NON_RELATIVISTIC") {
     return PolytropicGasType::ELECTRON_NON_RELATIVISTIC;
-  } else if (str == "ELECTRON_RELATIVISTIC") {
-    return PolytropicGasType::ELECTRON_RELATIVISTIC;
-  } else if (str == "NEUTRON_NON_RELATIVISTIC") {
-    return PolytropicGasType::NEUTRON_NON_RELATIVISTIC;
-  } else if (str == "NEUTRON_RELATIVISTIC") {
-    return PolytropicGasType::NEUTRON_RELATIVISTIC;
-  } else {
-    throw std::invalid_argument("Unknown gas type string: " + str);
   }
+  if (str == "ELECTRON_RELATIVISTIC") {
+    return PolytropicGasType::ELECTRON_RELATIVISTIC;
+  }
+  if (str == "NEUTRON_NON_RELATIVISTIC") {
+    return PolytropicGasType::NEUTRON_NON_RELATIVISTIC;
+  }
+  if (str == "NEUTRON_RELATIVISTIC") {
+    return PolytropicGasType::NEUTRON_RELATIVISTIC;
+  }
+  throw std::invalid_argument("Unknown gas type string: " + str);
 }
 
 // Create density grid
@@ -201,31 +203,31 @@ bool PolytropicEOS::writeEOSToFile(const std::string &filename,
                                    const PolytropicEOSData &eos_data,
                                    bool output_log_values) const {
   if (densities.size() != pressures.size()) {
-    std::cerr << "Error: densities and pressures vectors must have same size" << std::endl;
+    std::cerr << "Error: densities and pressures vectors must have same size" << '\n';
     return false;
   }
 
   std::ofstream outfile(filename);
   if (!outfile.is_open()) {
-    std::cerr << "Error: Could not open file " << filename << " for writing" << std::endl;
+    std::cerr << "Error: Could not open file " << filename << " for writing" << '\n';
     return false;
   }
 
   // Write header with metadata
-  outfile << "# Polytropic EOS: " << eos_data.name << std::endl;
-  outfile << "# k = " << std::scientific << std::setprecision(6) << eos_data.k << std::endl;
-  outfile << "# gamma = " << std::fixed << std::setprecision(6) << eos_data.gamma << std::endl;
+  outfile << "# Polytropic EOS: " << eos_data.name << '\n';
+  outfile << "# k = " << std::scientific << std::setprecision(6) << eos_data.k << '\n';
+  outfile << "# gamma = " << std::fixed << std::setprecision(6) << eos_data.gamma << '\n';
   if (eos_data.name.find("electron") != std::string::npos) {
-    outfile << "# mu_e = " << eos_data.mu_e << std::endl;
+    outfile << "# mu_e = " << eos_data.mu_e << '\n';
   }
-  outfile << "# EOS relation: P = k * rho^gamma" << std::endl;
-  outfile << "#" << std::endl;
+  outfile << "# EOS relation: P = k * rho^gamma" << '\n';
+  outfile << "#" << '\n';
 
   // Write column headers
   if (output_log_values) {
-    outfile << "log10_rho[g/cm^3],log10_P[dyne/cm^2],rho[g/cm^3],P[dyne/cm^2]" << std::endl;
+    outfile << "log10_rho[g/cm^3],log10_P[dyne/cm^2],rho[g/cm^3],P[dyne/cm^2]" << '\n';
   } else {
-    outfile << "rho[g/cm^3],P[dyne/cm^2]" << std::endl;
+    outfile << "rho[g/cm^3],P[dyne/cm^2]" << '\n';
   }
 
   // Write data
@@ -234,9 +236,9 @@ bool PolytropicEOS::writeEOSToFile(const std::string &filename,
   for (size_t i = 0; i < densities.size(); ++i) {
     if (output_log_values) {
       outfile << std::log10(densities[i]) << "," << std::log10(pressures[i]) << "," << densities[i]
-              << "," << pressures[i] << std::endl;
+              << "," << pressures[i] << '\n';
     } else {
-      outfile << densities[i] << "," << pressures[i] << std::endl;
+      outfile << densities[i] << "," << pressures[i] << '\n';
     }
   }
 
@@ -254,12 +256,12 @@ bool calculatePolytropicEOS(const std::string &gas_type_str,
     PolytropicEOSParameters calc_params = params;
     calc_params.gas_type = PolytropicEOS::stringToGasType(gas_type_str);
 
-    std::cout << "Calculating polytropic EOS for: " << gas_type_str << std::endl;
+    std::cout << "Calculating polytropic EOS for: " << gas_type_str << '\n';
 
     return calculator.generateEOSTable(calc_params);
 
   } catch (const std::exception &e) {
-    std::cerr << "Error in calculatePolytropicEOS: " << e.what() << std::endl;
+    std::cerr << "Error in calculatePolytropicEOS: " << e.what() << '\n';
     return false;
   }
 }
@@ -269,21 +271,21 @@ bool calculatePolytropicEOS(const std::string &gas_type_str,
 int main(int argc, char *argv[]) {
   try {
     if (argc < 2) {
-      std::cout << "Usage: " << argv[0] << " <GAS_TYPE> [options]" << std::endl;
-      std::cout << "Available gas types:" << std::endl;
-      std::cout << "  ELECTRON_NON_RELATIVISTIC" << std::endl;
-      std::cout << "  ELECTRON_RELATIVISTIC" << std::endl;
-      std::cout << "  NEUTRON_NON_RELATIVISTIC" << std::endl;
-      std::cout << "  NEUTRON_RELATIVISTIC" << std::endl;
-      std::cout << std::endl;
-      std::cout << "Options:" << std::endl;
-      std::cout << "  --rho-min <value>     Minimum density (g/cm³)" << std::endl;
-      std::cout << "  --rho-max <value>     Maximum density (g/cm³)" << std::endl;
-      std::cout << "  --num-points <value>  Number of points" << std::endl;
-      std::cout << "  --output <filename>   Output file" << std::endl;
-      std::cout << "  --linear-spacing      Use linear instead of log spacing" << std::endl;
-      std::cout << "  --no-log-output       Don't output logarithmic values" << std::endl;
-      std::cout << "  --list-all            List all available EOS types" << std::endl;
+      std::cout << "Usage: " << argv[0] << " <GAS_TYPE> [options]" << '\n';
+      std::cout << "Available gas types:" << '\n';
+      std::cout << "  ELECTRON_NON_RELATIVISTIC" << '\n';
+      std::cout << "  ELECTRON_RELATIVISTIC" << '\n';
+      std::cout << "  NEUTRON_NON_RELATIVISTIC" << '\n';
+      std::cout << "  NEUTRON_RELATIVISTIC" << '\n';
+      std::cout << '\n';
+      std::cout << "Options:" << '\n';
+      std::cout << "  --rho-min <value>     Minimum density (g/cm³)" << '\n';
+      std::cout << "  --rho-max <value>     Maximum density (g/cm³)" << '\n';
+      std::cout << "  --num-points <value>  Number of points" << '\n';
+      std::cout << "  --output <filename>   Output file" << '\n';
+      std::cout << "  --linear-spacing      Use linear instead of log spacing" << '\n';
+      std::cout << "  --no-log-output       Don't output logarithmic values" << '\n';
+      std::cout << "  --list-all            List all available EOS types" << '\n';
       return 1;
     }
 
@@ -294,13 +296,13 @@ int main(int argc, char *argv[]) {
       PolytropicEOS calculator;
       auto all_types = calculator.getAllEOSTypes();
 
-      std::cout << "Available polytropic EOS types:" << std::endl;
-      std::cout << std::string(60, '-') << std::endl;
+      std::cout << "Available polytropic EOS types:" << '\n';
+      std::cout << std::string(60, '-') << '\n';
 
       for (const auto &[type, data] : all_types) {
         std::cout << std::left << std::setw(30) << PolytropicEOS::gasTypeToString(type);
         std::cout << "k = " << std::scientific << std::setprecision(3) << data.k;
-        std::cout << ", γ = " << std::fixed << std::setprecision(4) << data.gamma << std::endl;
+        std::cout << ", γ = " << std::fixed << std::setprecision(4) << data.gamma << '\n';
       }
       return 0;
     }
@@ -324,7 +326,7 @@ int main(int argc, char *argv[]) {
       } else if (arg == "--no-log-output") {
         params.output_log_values = false;
       } else {
-        std::cerr << "Unknown option: " << arg << std::endl;
+        std::cerr << "Unknown option: " << arg << '\n';
         return 1;
       }
     }
@@ -335,7 +337,7 @@ int main(int argc, char *argv[]) {
     return success ? 0 : 1;
 
   } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << std::endl;
+    std::cerr << "Error: " << e.what() << '\n';
     return 1;
   }
 }

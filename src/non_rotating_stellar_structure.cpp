@@ -62,9 +62,9 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
   std::string filename = get_filename(name, rho_c);
   std::ofstream outfile(filename);
   if (!outfile.is_open()) {
-    std::cerr << "Error opening file: " << filename << std::endl;
+    std::cerr << "Error opening file: " << filename << '\n';
   }
-  std::cout << "Writing to file: " << filename << std::endl;
+  std::cout << "Writing to file: " << filename << '\n';
 
   double fraction = 4.0 / 3.0;
   double log_r_start = log10(r_start);
@@ -73,11 +73,11 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
   double log_p0 = log10(k) + (gamma * log10(rho_c));
   std::vector<double> state = {log_m0, log_p0};
 
-  std::cout << "Initial conditions:" << std::endl;
-  std::cout << "  log_r_start = " << log_r_start << std::endl;
-  std::cout << "  log_m0 = " << log_m0 << std::endl;
-  std::cout << "  log_p0 = " << log_p0 << std::endl;
-  std::cout << "  k = " << k << ", gamma = " << gamma << std::endl;
+  std::cout << "Initial conditions:" << '\n';
+  std::cout << "  log_r_start = " << log_r_start << '\n';
+  std::cout << "  log_m0 = " << log_m0 << '\n';
+  std::cout << "  log_p0 = " << log_p0 << '\n';
+  std::cout << "  k = " << k << ", gamma = " << gamma << '\n';
 
   outfile << "log_r[cm],log_m[g],log_P[dyne/cm^2]\n";
 
@@ -94,18 +94,17 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
     // Stop if pressure drops below a threshold
     // Use 1e15 for Neutron Stars
     if (state[1] < log10(1e15)) { // Reasonable threshold: 10^15 dyne/cm² for surface detection
-      std::cout << "Surface reached at log_r: " << log_r << std::endl;
+      std::cout << "Surface reached at log_r: " << log_r << '\n';
       break;
     }
 
     if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
-      std::cout << "Non-finite values at log_r: " << log_r << std::endl;
+      std::cout << "Non-finite values at log_r: " << log_r << '\n';
       break;
     }
 
     if (idx % 100 == 0) {
-      std::cout << "log_r: " << log_r << ", log_m: " << state[0] << ", log_P: " << state[1]
-                << std::endl;
+      std::cout << "log_r: " << log_r << ", log_m: " << state[0] << ", log_P: " << state[1] << '\n';
     }
 
     idx += 1;
@@ -127,7 +126,7 @@ std::vector<double> newtonian(double log_r, const std::vector<double> &state, do
   double dlogP_dlogr = (-(G * m * rho) / (P * r));
 
   // std::cout << "Debug: r: " << r << ", dlogm_dlogr: " << dlogm_dlogr
-  //           << ", dlogP_dlogr: " << dlogP_dlogr << std::endl;
+  //           << ", dlogP_dlogr: " << dlogP_dlogr << '\n';
 
   return {dlogm_dlogr, dlogP_dlogr};
 }
@@ -199,10 +198,12 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
 
   // Clamp pressure to EOS validity range
   double log_P = state[1];
-  if (log_P < min_logP)
+  if (log_P < min_logP) {
     log_P = min_logP;
-  if (log_P > max_logP)
+  }
+  if (log_P > max_logP) {
     log_P = max_logP;
+  }
 
   // Get density from spline interpolation: log_rho = f^(-1)(log_P)
   double P = std::pow(10.0, log_P);
@@ -232,15 +233,18 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
     double min_logP, double max_logP) {
   double m = std::pow(10.0, state[0]);
   double r = std::pow(10.0, log_r);
-  if (m < 1e-30)
+  if (m < 1e-30) {
     m = 1e-30;
+  }
 
   // Clamp pressure and evaluate required fields
   double logP = state[1];
-  if (logP < min_logP)
+  if (logP < min_logP) {
     logP = min_logP;
-  if (logP > max_logP)
+  }
+  if (logP > max_logP) {
     logP = max_logP;
+  }
 
   const double P = std::pow(10.0, logP); // dyne/cm^2 = erg/cm^3
 
@@ -298,10 +302,10 @@ TovResult non_rotating_stellar_structure_spline(
   if (write_output) {
     outfile.open(output_filename);
     if (!outfile.is_open()) {
-      std::cerr << "Error opening file: " << output_filename << std::endl;
+      std::cerr << "Error opening file: " << output_filename << '\n';
       write_output = false;
     } else {
-      std::cout << "Writing to file: " << output_filename << std::endl;
+      std::cout << "Writing to file: " << output_filename << '\n';
       outfile << "log_r[cm],log_m[g],log_P[dyne/cm^2]\n";
     }
   }
@@ -325,10 +329,11 @@ TovResult non_rotating_stellar_structure_spline(
   double target = std::log10(rho_c);
   for (int it = 0; it < 60; ++it) {
     double m = 0.5 * (a + b);
-    if (rho_of_logP(m) < target)
+    if (rho_of_logP(m) < target) {
       a = m;
-    else
+    } else {
       b = m;
+    }
   }
   double log_p0 = 0.5 * (a + b);
   if (std::abs(log_p0 - max_logP) < 1e-6) {
@@ -338,12 +343,12 @@ TovResult non_rotating_stellar_structure_spline(
   std::vector<double> state = {log_m0, log_p0};
   std::vector<double> state_prev = state;
 
-  std::cout << "Initial conditions (spline-based):" << std::endl;
-  std::cout << "  log_r_start = " << log_r_start << std::endl;
-  std::cout << "  log_m0 = " << log_m0 << std::endl;
-  std::cout << "  log_p0 = " << log_p0 << std::endl;
-  std::cout << "  rho_c = " << rho_c << " g/cm³" << std::endl;
-  std::cout << "  EOS range: [" << min_logP << ", " << max_logP << "]" << std::endl;
+  std::cout << "Initial conditions (spline-based):" << '\n';
+  std::cout << "  log_r_start = " << log_r_start << '\n';
+  std::cout << "  log_m0 = " << log_m0 << '\n';
+  std::cout << "  log_p0 = " << log_p0 << '\n';
+  std::cout << "  rho_c = " << rho_c << " g/cm³" << '\n';
+  std::cout << "  EOS range: [" << min_logP << ", " << max_logP << "]" << '\n';
 
   int idx = 0;
   double log_r = log_r_start;
@@ -389,20 +394,20 @@ TovResult non_rotating_stellar_structure_spline(
     // EOS validity check
     if (state[1] < min_logP || state[1] > max_logP) {
       std::cout << "Pressure outside EOS range at log_r: " << log_r << " (log_P = " << state[1]
-                << ")" << std::endl;
+                << ")" << '\n';
       break;
     }
 
     // Numerical stability check
     if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
-      std::cout << "Non-finite values at log_r: " << log_r << std::endl;
+      std::cout << "Non-finite values at log_r: " << log_r << '\n';
       break;
     }
 
     // Progress reporting
     if (idx % 1000 == 0) {
       std::cout << "log_r: " << log_r << ", log_m: " << state[0] << ", log_P: " << state[1]
-                << ", step: " << current_dlogr << std::endl;
+                << ", step: " << current_dlogr << '\n';
     }
 
     // Adaptive step size control
@@ -415,8 +420,9 @@ TovResult non_rotating_stellar_structure_spline(
       current_dlogr = std::clamp(base_dlogr * scale, dlogr_min, dlogr_max);
     }
 
-    if (log_r + current_dlogr > log_r_end)
+    if (log_r + current_dlogr > log_r_end) {
       current_dlogr = log_r_end - log_r;
+    }
 
     state_prev = state;
     log_r_prev = log_r;
@@ -426,7 +432,8 @@ TovResult non_rotating_stellar_structure_spline(
   std::cerr << "[NoSurface] rho_c=" << rho_c << " last log_r=" << log_r
             << " last log_P=" << state[1] << " logP_stop=" << logP_stop << "\n";
 
-  if (write_output)
+  if (write_output) {
     outfile.close();
+  }
   return {idx, state[0], log_r, false};
 }

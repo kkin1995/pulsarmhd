@@ -130,7 +130,7 @@ private:
    * @note Used in calculating the degeneracy pressure of the fermionic components
    * @see chi() for the energy density counterpart
    */
-  double phi(double x) const;
+  [[nodiscard]] auto phi(double x) const -> double;
 
   /**
    * @internal
@@ -159,7 +159,7 @@ private:
    * @note Used in calculating the energy density of the fermionic components
    * @see phi() for the pressure counterpart
    */
-  double chi(double x) const;
+  [[nodiscard]] auto chi(double x) const -> double;
 
   /**
    * @internal
@@ -191,8 +191,8 @@ private:
    * @note This function uses GSL's cubic spline interpolation routines
    * @warning The function assumes responsibility for memory management of GSL resources
    */
-  double interpolate_spline(double t, const std::vector<double> &x,
-                            const std::vector<double> &y) const;
+  [[nodiscard]] auto interpolate_spline(double t, const std::vector<double> &x,
+                                        const std::vector<double> &y) const -> double;
 
   /**
    * @class BetaEquilibriumSolver
