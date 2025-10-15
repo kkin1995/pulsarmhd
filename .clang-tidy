@@ -3,5 +3,4 @@ Checks: >
   ,-cppcoreguidelines-avoid-magic-numbers
 WarningsAsErrors: '*'
 HeaderFilterRegex: '^(include|src)/'
-AnalyzeTemporaryDtors: true
 FormatStyle: none
