@@ -8,8 +8,35 @@ Before `1.0.0`, minor versions may include breaking changes if needed.
 ## [Unreleased]
 ### Added
 ### Changed
-- Mass–density plot: apply axis cosmetics once after plotting; consistent `fig`, `ax` lifecycle (no visual change for single EOS).
 ### Fixed
+
+## [0.5.0] - 2025-10-15
+### Added
+- **C++20 toolchain**: use `<numbers>` for π with a portable fallback; remove reliance on `M_PI`.
+- **Unified TOV core**:
+  - `EOSView` abstraction + concrete `PolytropicEOSView` and `SplineEOSView`.
+  - Single `tov_derivatives(...)` path with `GravityModel` (Newtonian/RelativisticTOV)
+    and `MassSource` (ρ-based or ε-based) switches.
+  - `integrate_structure(...)` driver centralizing RK4 stepping, surface detection, and I/O.
+- **ε-aware path in unified core**: optional `epsilon(log10P)` spline, with fallback `ε ≈ ρ c²`.
+- **Surface detection improvements**: bracket via inverse EOS ρ(P); linear crossing interpolation.
+- **Stricter code hygiene**: `[[nodiscard]]` on EOS view queries; pre-commit formatting tidy-ups.
+
+### Changed
+- Mass–density plot: apply axis cosmetics once after plotting; consistent `fig`, `ax` lifecycle (no visual change for single EOS).
+- **`main.cpp`** now routes all models through the unified TOV core; prints compactness
+  in dimensionless form \(GM/(Rc^2)\) (same numeric factor as before).
+- **File I/O**: consistent CSV headers and filename helper; fewer spurious logs.
+- **Adaptive stepping**: gentler step-size scaling tied to \|d logP / d log r\| (smoother traces).
+
+### Fixed
+- Clang-tidy complaints: braces-around-statements, else-after-return, shadowed locals.
+- Corner cases in EOS cleaning (strictly monotone `log_P` with ε kept aligned).
+- Intermittent “no surface bracketed” when `ρ_surface` near table boundaries.
+
+### Removed
+- Local duplicates of TOV derivative functions in favor of the unified core.
+- Ad-hoc `M_PI` macro defines (now using C++20 `<numbers>` or shim).
 
 ## [0.4.0] - 2025-08-21
 ### Added
@@ -55,7 +82,8 @@ Before `1.0.0`, minor versions may include breaking changes if needed.
 
 ---
 
-[Unreleased]: https://github.com/kkin1995/pulsarmhd/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kkin1995/pulsarmhd/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/kkin1995/pulsarmhd/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kkin1995/pulsarmhd/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kkin1995/pulsarmhd/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kkin1995/pulsarmhd/compare/v0.1.0...v0.2.0
