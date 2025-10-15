@@ -12,21 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache APT
-        uses: actions/cache@v4
+      - name: Cache & install apt packages
+        uses: awalsh128/cache-apt-pkgs-action@v1
         with:
-          path: |
-            /var/cache/apt
-            /var/lib/apt/lists
-          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/ci.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-
-
-      - name: Toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          packages: >
             g++ make clang-tidy cppcheck bear libgsl-dev libomp-dev
+          # bump this to invalidate cache when package set changes
+          version: 1.0
 
       - name: Build (default flags)
         run: make
@@ -48,20 +40,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache APT
-        uses: actions/cache@v4
+      - name: Cache & install apt packages
+        uses: awalsh128/cache-apt-pkgs-action@v1
         with:
-          path: |
-            /var/cache/apt
-            /var/lib/apt/lists
-          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/ci.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-
-
-      - name: Toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends g++ make libgsl-dev
+          packages: >
+            g++ make libgsl-dev
+          version: 1.0
 
       - name: ASan build
         run: make asan
