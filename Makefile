@@ -166,6 +166,48 @@ list-sources:
 	@echo $(MAIN_BIN)
 	@echo $(TEST_BIN)
 
+# Opt-in strict warnings (keeps your defaults untouched)
+STRICT_WARNINGS := -Wshadow -Wconversion -Wdouble-promotion
+
+strict:
+	@echo "Building with strict warnings..."
+	$(MAKE) clean || true
+	$(MAKE) CXXFLAGS="$(CXXFLAGS) $(STRICT_WARNINGS)"
+
+asan:
+	@echo "Building with AddressSanitizer..."
+	$(MAKE) clean || true
+	$(MAKE) CXXFLAGS="$(CXXFLAGS) -fsanitize=address -fno-omit-frame-pointer" \
+	        LIBS="$(LIBS)"
+
+ubsan:
+	@echo "Building with UndefinedBehaviorSanitizer..."
+	$(MAKE) clean || true
+	$(MAKE) CXXFLAGS="$(CXXFLAGS) -fsanitize=undefined -fno-omit-frame-pointer" \
+	        LIBS="$(LIBS)"
+
+
+# Static analysis helpers (non-fatal). Requires compile_commands.json.
+tidy:
+	@if [ ! -f compile_commands.json ]; then echo "Run 'make compdb' first."; exit 1; fi
+	clang-tidy -p . $(SRCS) $(TEST_SRCS) || true
+
+cppcheck:
+	@echo "Running cppcheck (non-fatal)..."
+	@if [ ! -f compile_commands.json ]; then \
+		echo "compile_commands.json not found. Run 'make compdb' first." ; \
+		exit 1 ; \
+	fi
+	cppcheck --project=compile_commands.json --enable=warning,performance,portability --inline-suppr || true
+
+# Generate compile_commands.json using bear (if installed)
+compdb:
+	@echo "Generating compile_commands.json with bear..."
+	@command -v bear >/dev/null 2>&1 || { echo "Please install 'bear' (sudo apt install bear)"; exit 1; }
+	@rm -f compile_commands.json
+	bear -- $(MAKE) clean all
+	@echo "compile_commands.json generated."
+
 # Run the main program
 run: $(MAIN_BIN)
 	@echo "Running main program..."
@@ -194,3 +236,24 @@ help:
 	@echo "  help                   - Show this help message"
 
 .PHONY: all test clean debug help list-sources dirs run clean-all
+
+# ---- FUTURE: enable recursive discovery if you add subdirs ----
+# SRCS := $(shell find $(SRC_DIR) -type f -name '*.cpp' | sort)
+# TEST_SRCS := $(shell find $(TEST_DIR) -type f -name '*.cpp' | sort)
+#
+# # Map to objects preserving subdirectory layout under $(OBJ_DIR)
+# OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
+# TEST_OBJS := $(patsubst $(TEST_DIR)/%.cpp,$(OBJ_DIR)/test_%.o,$(TEST_SRCS))
+#
+# # Put .d files next to .o to avoid name collisions
+# DEPS := $(OBJS:.o=.d)
+# TEST_DEPS := $(TEST_OBJS:.o=.d)
+#
+# # Ensure subdirs exist when compiling
+# $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+# 	@echo "Compiling $<..."
+# 	@mkdir -p $(dir $@)
+# 	$(CXX) $(CXXFLAGS) $(INC_FLAGS) -MMD -MP -c $< -o $@
+#
+# # Include dependency files
+# -include $(DEPS) $(TEST_DEPS)
