@@ -15,6 +15,21 @@
 #include <utility>
 #include <vector>
 
+// Helpers for reporting (avoid magic numbers)
+namespace {
+// CGS constants used elsewhere:
+//   extern const double G; // from non_rotating_stellar_structure.hpp
+//   extern const double c; // from non_rotating_stellar_structure.hpp
+constexpr double kMsun_g = 1.98847e33; // g
+constexpr double kCmPerKm = 1e5;       // cm per km
+
+inline double twoGM_over_Rc2(double mass_solar, double radius_km) {
+  const double M = mass_solar * kMsun_g;
+  const double R = radius_km * kCmPerKm;
+  return (2.0 * G * M) / (R * c * c);
+}
+} // namespace
+
 bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
                  std::vector<double> &log_P,
                  std::vector<double> &epsilon /* erg/cm^3; optional, may stay empty */) {
@@ -393,7 +408,10 @@ int main() {
     std::cout << "Integration completed in " << res.steps << " steps" << '\n';
     std::cout << "Final Mass = " << mass_grams << " g = " << mass_solar << " M☉" << '\n';
     std::cout << "Final Radius = " << radius_cm << " cm = " << radius_km << " km" << '\n';
-    std::cout << "Compactness = " << (2.95325 * mass_solar / radius_km) << '\n';
+    const double twoGM_Rc2 = twoGM_over_Rc2(mass_solar, radius_km);
+    const double compactness = 0.5 * twoGM_Rc2; // GM/(Rc^2)
+    std::cout << "2GM/(Rc^2) = " << twoGM_Rc2 << '\n';
+    std::cout << "Compactness = " << compactness << '\n';
   }
 
   // Clean up

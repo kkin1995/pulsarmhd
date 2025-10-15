@@ -75,8 +75,9 @@ TovResult integrate_structure(const EOSView &view, GravityModel grav, MassSource
     }
 
     // Stability
-    if (!std::isfinite(state[0]) || !std::isfinite(state[1]))
+    if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
       break;
+    }
 
     // Progress
     if (idx % opts.progress_stride == 0) {
@@ -100,7 +101,8 @@ TovResult integrate_structure(const EOSView &view, GravityModel grav, MassSource
     ++idx;
   }
 
-  if (write_output && outfile.is_open())
+  if (write_output && outfile.is_open()) {
     outfile.close();
+  }
   return {idx, state[0], log_r, false};
 }

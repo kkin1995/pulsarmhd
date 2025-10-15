@@ -203,10 +203,11 @@ TovResult non_rotating_stellar_structure_spline(
   double a = min_logP, b = max_logP, target = std::log10(rho_c);
   for (int it = 0; it < 60; ++it) {
     double m = 0.5 * (a + b);
-    if (rho_of_logP(m) < target)
+    if (rho_of_logP(m) < target) {
       a = m;
-    else
+    } else {
       b = m;
+    }
   }
   const double log_p0 = 0.5 * (a + b);
 
@@ -219,8 +220,9 @@ TovResult non_rotating_stellar_structure_spline(
   opts.base_dlogr = base_dlogr;
   opts.use_adaptive_stepping = use_adaptive_stepping;
   opts.pressure_threshold = pressure_threshold;
-  if (!output_filename.empty())
+  if (!output_filename.empty()) {
     opts.output_filename = output_filename;
+  }
 
   return integrate_structure(view, GravityModel::RelativisticTOV, MassSource::UseEpsilonForMass,
                              rho_c, log_m0, log_p0, opts);
