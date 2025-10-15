@@ -11,12 +11,12 @@ c = 3e10 # CGS
 def convert_bludman_data_to_mass_and_radius(path_to_bludman_results: str, n: float, K: float) -> tuple[np.ndarray, np.ndarray]:
     """
     Convert Bludman's dimensionless quantities to physical mass and radius.
-    
+
     Args:
         path_to_bludman_results: Path to CSV file containing Bludman's results
         n: Polytropic index
         K: Polytropic constant in CGS units
-    
+
     Returns:
         Tuple of (masses in solar masses, radii in km)
     """

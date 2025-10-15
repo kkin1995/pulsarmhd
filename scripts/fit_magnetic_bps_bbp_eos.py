@@ -47,7 +47,7 @@ def _hermite_gap_bridge(xL, yL, xR, yR, n=64):
 def fritsch_carlson_monotonic_slopes(x1, x2, y1, y2, m1, m2):
     """
     Apply Fritsch-Carlson monotonicity constraints to cubic Hermite spline derivatives.
-    
+
     Parameters:
     ----------
     x1, y1 : float
@@ -56,7 +56,7 @@ def fritsch_carlson_monotonic_slopes(x1, x2, y1, y2, m1, m2):
         Second point coordinates (log_rho, log_P for EOS)
     m1, m2 : float
         Initial derivatives at the first and second points
-        
+
     Returns:
     -------
     tuple
@@ -65,64 +65,64 @@ def fritsch_carlson_monotonic_slopes(x1, x2, y1, y2, m1, m2):
     # Step 1: Calculate secant slope
     dx = x2 - x1
     dy = y2 - y1
-    
+
     if abs(dx) < 1e-10:  # Vertical line
         return 0.0, 0.0
-    
+
     delta = dy / dx  # Secant slope
-    
+
     # Step 2: Check if delta is zero or near-zero (flat segment)
     if abs(delta) < 1e-10:
         return 0.0, 0.0
-    
+
     # Step 3: Calculate non-dimensional ratios
     alpha = m1 / delta
     beta = m2 / delta
-    
+
     # Step 4: Check if slopes have opposite signs from secant
     if alpha < 0 or beta < 0:
         # Different signs - not monotonic, set both to zero
         return 0.0, 0.0
-    
+
     # Step 5: Check the three monotonicity conditions
     # Condition 1: if alpha*(2*alpha + beta - 3)^2/(3*(alpha + beta - 2)) > 0
     # Condition 2: if alpha + 2*beta - 3 <= 0
     # Condition 3: if 2*alpha + beta - 3 <= 0
-    
+
     # Calculate terms for conditions
     sum_ab = alpha + beta
     cond2 = alpha + 2*beta - 3
     cond3 = 2*alpha + beta - 3
-    
+
     # Check if at least one condition is satisfied
     if sum_ab == 2:  # Special case: linear
         # Already monotonic if endpoints are monotonic
         return m1, m2
-    
+
     cond1_satisfied = False
     if sum_ab > 2:  # Parabola opens upward
         # Complex condition 1 check
         term1 = 2*alpha + beta - 3
         term2 = term1*term1/(3*(sum_ab - 2))
         cond1_satisfied = alpha*term2 > 0
-    
+
     # If any condition is satisfied, original slopes are fine
     if cond1_satisfied or cond2 <= 0 or cond3 <= 0:
         return m1, m2
-    
+
     # Step 6: No condition satisfied - apply scaling to ensure monotonicity
     # Simple approach: ensure alpha + beta <= 3 (a known sufficient condition)
     if sum_ab > 3:
         # Scale both derivatives
         tau = 3.0 / sum_ab
         return tau * m1, tau * m2
-    
+
     # Alternative: apply circle constraint as a general safety measure
     alpha_beta_squared = alpha*alpha + beta*beta
     if alpha_beta_squared > 9:
         tau = 3.0 / math.sqrt(alpha_beta_squared)
         return tau * m1, tau * m2
-    
+
     # If we reach here, the slopes should be fine, but use smaller values for safety
     # Reduce both by a safety factor as a last resort
     safety_factor = 0.9  # Slightly reduce derivatives
@@ -268,7 +268,7 @@ else:
     # Find x2 >= x1 such that f_bbp(x2) == y_target, within BBP domain (extrapolate=False)
     x2_lo = x_1
     x2_hi = float(bbp_df['x'].iloc[-1])  # high end of BBP table
-    def h(x): 
+    def h(x):
         val = f_bbp(x)
         return float(val - y_target) if np.isfinite(val) else -1.0  # keep sign
 
@@ -282,7 +282,7 @@ else:
         # Fall back to exact equality with y1 (plateau end), which MUST exist eventually.
         # Try root for y1 instead of y_target:
         y_plateau = y1
-        def h_eq(x): 
+        def h_eq(x):
             val = f_bbp(x)
             return float(val - y_plateau) if np.isfinite(val) else -1.0
         if h_eq(x2_hi) <= 0:

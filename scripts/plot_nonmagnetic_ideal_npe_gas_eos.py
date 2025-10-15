@@ -20,7 +20,7 @@ log_n = log_n[mask]
 # Calculate gamma using finite differences
 def calculate_gamma_physics(log_P, log_rho):
     gamma = np.zeros_like(log_rho)
-    
+
     # Use central differences for bulk
     for i in range(1, len(log_rho)-1):
         # Calculate dlog(P)/dlog(rho)
@@ -28,11 +28,11 @@ def calculate_gamma_physics(log_P, log_rho):
         dlogrho = log_rho[i+1] - log_rho[i-1]
         if dlogrho != 0:
             gamma[i] = dlogP/dlogrho
-    
+
     # Handle endpoints using forward/backward differences
     gamma[0] = (log_P[1] - log_P[0])/(log_rho[1] - log_rho[0])
     gamma[-1] = (log_P[-1] - log_P[-2])/(log_rho[-1] - log_rho[-2])
-    
+
     return gamma
 
 # Calculate gamma

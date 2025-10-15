@@ -9,11 +9,11 @@ output_directory: "/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Rese
 style:
   # Theme selection: publication, presentation, dark, colorblind
   theme: "publication"
-  
+
   # Figure properties
   figure_size: [10, 6]  # Width, height in inches
   dpi: 300              # Resolution for output images
-  
+
   # Visual styling
   grid: true
   grid_alpha: 0.3
@@ -22,7 +22,7 @@ style:
   line_width: 2.0
   marker_size: 10.0
   alpha: 0.7
-  
+
   # EOS-specific colors (can be overridden by theme)
   colors:
     hybrid: "blue"
@@ -30,7 +30,7 @@ style:
     electron_relativistic: "red"
     electron_non_relativistic: "orange"
     neutron_non_relativistic: "purple"
-  
+
   # EOS-specific markers
   markers:
     hybrid: "o"
@@ -38,7 +38,7 @@ style:
     electron_relativistic: "^"
     electron_non_relativistic: "v"
     neutron_non_relativistic: "D"
-  
+
   # Line styles for different plot elements
   line_styles:
     mass: "-"
@@ -82,20 +82,20 @@ themes:
     font_family: "serif"
     background_color: "white"
     grid_style: "subtle"
-    
+
   presentation:
     description: "Large fonts and high contrast for presentations"
     font_family: "sans-serif"
     background_color: "#f8f8f8"
     grid_style: "visible"
-    
+
   dark:
     description: "Dark theme for screens and presentations"
     font_family: "sans-serif"
     background_color: "#1e1e1e"
     text_color: "white"
     grid_style: "subtle"
-    
+
   colorblind:
     description: "Colorblind-friendly palette with high contrast"
     font_family: "sans-serif"
@@ -108,15 +108,15 @@ advanced:
   # Statistical analysis
   enable_statistics: true
   confidence_intervals: false
-  
+
   # Export options
   export_formats: ["png"]  # png, pdf, svg, eps
   high_dpi_export: true
-  
+
   # Annotation options
   show_model_count: true
   show_physical_limits: false  # e.g., Chandrasekhar limit
-  
+
   # Comparison features
   enable_error_bars: false
   show_trend_lines: false
@@ -130,21 +130,21 @@ logging:
 constants:
   solar_mass_g: 1.989e33
   cm_to_km: 1.0e-5
-  
+
 # Default plot parameters
 defaults:
   mass_radius:
     xlabel: "Radius (km)"
     ylabel: "Mass (Solar Masses)"
     title: "Mass-Radius Relations"
-    
+
   mass_density:
     xlabel: "log10(rho_c) [g/cm^3]"
     ylabel: "Mass (Solar Masses)"
     title: "Mass vs. log10(Central Density)"
-    
+
   single_profile:
     xlabel: "Radius [km]"
     ylabel_left: "Mass [M_sun]"
     ylabel_right: "Pressure [dyne/cm^2]"
-    title: "Mass and Pressure Profiles" 
+    title: "Mass and Pressure Profiles"

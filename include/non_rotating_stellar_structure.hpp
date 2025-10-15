@@ -9,9 +9,9 @@
  * @date 2025-05-25
  *
  * @details
- * This file defines constants, enumerations, and function declarations used for 
- * simulating the structure of non-rotating stars, such as white dwarfs and neutron stars. 
- * The functions solve hydrostatic equilibrium equations for both Newtonian 
+ * This file defines constants, enumerations, and function declarations used for
+ * simulating the structure of non-rotating stars, such as white dwarfs and neutron stars.
+ * The functions solve hydrostatic equilibrium equations for both Newtonian
  * and relativistic frameworks, using different equations of state (EOS).
  *
  * @section features Features
@@ -32,7 +32,8 @@
  *
  * @section functions Functions
  * @li newtonian: Computes derivatives for Newtonian hydrostatic equilibrium
- * @li tolman_oppenheimer_volkoff_derivatives: Computes derivatives for relativistic stellar structure
+ * @li tolman_oppenheimer_volkoff_derivatives: Computes derivatives for relativistic stellar
+ * structure
  * @li set_eos_parameters: Sets the EOS parameters (k and gamma) based on the gas type
  * @li get_filename: Generates filenames for output data based on EOS and central density
  *
@@ -41,7 +42,7 @@
  * std::string eos_name;
  * double k, gamma;
  * auto eos_data = calculator.getEOSParameters(PolytropicGasType::ELECTRON_RELATIVISTIC);
- * 
+ *
  * std::vector<double> state = {log_m, log_p};
  * std::vector<double> derivatives = tolman_oppenheimer_volkoff_derivatives(log_r, state, k, gamma);
  * @endcode
@@ -49,14 +50,14 @@
  * @see rk4.hpp for numerical integration using Runge-Kutta methods.
  */
 
+#include "polytropic_eos.hpp"
 
 #include <string>
 #include <vector>
-#include "polytropic_eos.hpp"
 
 // GSL includes for spline-based EOS support
-#include <gsl/gsl_spline.h>
 #include <gsl/gsl_errno.h>
+#include <gsl/gsl_spline.h>
 
 // Physical Constants in CGS
 
@@ -68,11 +69,11 @@ const double G = 6.67430e-8; // gravitational constant in CGS
 /**
  * @brief Speed of light in CGS units.
  */
-const double c = 2.99792458e10;  // speed of light in CGS units
+const double c = 2.99792458e10; // speed of light in CGS units
 
 /**
  * @brief Polytropic EOS types are now handled by the PolytropicEOS class.
- * 
+ *
  * The stellar structure solver now uses the centralized polytropic EOS calculator
  * from polytropic_eos.hpp, which provides the same gas types with enhanced
  * functionality and consistency across the codebase.
@@ -82,10 +83,10 @@ const double c = 2.99792458e10;  // speed of light in CGS units
  */
 
 struct TovResult {
-    int steps;
-    double log10_m_surface;
-    double log10_r_surface;
-    bool found_surface;
+  int steps;
+  double log10_m_surface;
+  double log10_r_surface;
+  bool found_surface;
 };
 
 /**
@@ -101,9 +102,9 @@ struct TovResult {
  * The function solves the TOV equations in logarithmic coordinates:
  * \f{eqnarray*}{
  * \frac{d(\log m)}{d(\log r)} &=& \frac{4 \pi r^3 \rho}{m} \\
- * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right) 
- *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right) 
- *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right) 
+ * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right)
+ *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right)
+ *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right)
  *                                  \cdot \left( 1 - \frac{2 G m}{r c^2} \right)^{-1}
  * \f}
  *
@@ -111,7 +112,7 @@ struct TovResult {
  * Uses polytropic EOS: \f$P = k \rho^\gamma\f$ where k and γ are automatically
  * determined from the gas type. Supported types include:
  * - Non-relativistic electron gas (γ = 5/3): White dwarf cores
- * - Relativistic electron gas (γ = 4/3): Massive white dwarfs  
+ * - Relativistic electron gas (γ = 4/3): Massive white dwarfs
  * - Non-relativistic neutron gas (γ = 5/3): Low-density neutron star regions
  * - Relativistic neutron gas (γ = 4/3): High-density neutron star cores
  *
@@ -168,21 +169,21 @@ struct TovResult {
  * auto [steps, log_mass] = non_rotating_stellar_structure(
  *     PolytropicGasType::ELECTRON_NON_RELATIVISTIC,
  *     1e6,    // Central density: 10⁶ g/cm³
- *     10.0,   // Start radius: 10 cm  
+ *     10.0,   // Start radius: 10 cm
  *     1e6,    // End radius: 10⁶ cm
  *     0.05    // Step size in log(r)
  * );
- * 
+ *
  * double mass_grams = std::pow(10.0, log_mass);
  * double mass_solar = mass_grams / 1.989e33;  // Convert to solar masses
  * std::cout << "White dwarf mass: " << mass_solar << " M☉" << std::endl;
- * 
+ *
  * // Calculate neutron star with custom composition
  * auto [ns_steps, ns_log_mass] = non_rotating_stellar_structure(
  *     PolytropicGasType::NEUTRON_RELATIVISTIC,
  *     5e14,   // Central density: 5×10¹⁴ g/cm³
  *     10.0,   // Start radius: 10 cm
- *     1e6,    // End radius: 10⁶ cm  
+ *     1e6,    // End radius: 10⁶ cm
  *     0.02,   // Smaller step for accuracy
  *     2.0     // Standard μₑ for neutron matter
  * );
@@ -192,10 +193,14 @@ struct TovResult {
  * @see PolytropicEOS::getEOSParameters() for EOS parameter calculation
  * @see get_filename() for output file naming convention
  */
-std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start, double r_end, double dlogr, double mu_e = 2.0);
+std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType eos_type,
+                                                               double rho_c, double r_start,
+                                                               double r_end, double dlogr,
+                                                               double mu_e = 2.0);
 
 /**
- * @brief Solves stellar structure equations for non-rotating compact objects using spline-based EOS.
+ * @brief Solves stellar structure equations for non-rotating compact objects using spline-based
+ * EOS.
  *
  * @details
  * This function integrates the Tolman-Oppenheimer-Volkoff (TOV) equations for relativistic
@@ -207,9 +212,9 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
  * The function solves the same TOV equations as the polytropic version:
  * \f{eqnarray*}{
  * \frac{d(\log m)}{d(\log r)} &=& \frac{4 \pi r^3 \rho}{m} \\
- * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right) 
- *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right) 
- *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right) 
+ * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right)
+ *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right)
+ *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right)
  *                                  \cdot \left( 1 - \frac{2 G m}{r c^2} \right)^{-1}
  * \f}
  *
@@ -253,7 +258,7 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
  *
  * @return std::tuple<int, double, double> containing:
  *         - Integration steps completed before reaching surface
- *         - Final log₁₀(mass) in grams at stellar surface  
+ *         - Final log₁₀(mass) in grams at stellar surface
  *         - Final log₁₀(radius) in cm at stellar surface
  *
  * @pre spline_inv != nullptr (valid GSL spline object)
@@ -283,27 +288,27 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
  * gsl_spline* spline_inv = ...; // ρ(P) spline
  * gsl_interp_accel* acc_inv = ...;
  * double min_logP = 15.0, max_logP = 35.0; // EOS validity range
- * 
+ *
  * // Calculate neutron star structure with realistic EOS
  * auto [steps, log_mass, log_radius] = non_rotating_stellar_structure_spline(
  *     spline_inv, acc_inv, min_logP, max_logP,
  *     1e15,      // Central density: 10¹⁵ g/cm³
- *     1.0,       // Start radius: 1 cm  
+ *     1.0,       // Start radius: 1 cm
  *     1e6,       // End radius: 10⁶ cm
  *     0.0001,    // Base step size
  *     true,      // Enable adaptive stepping
  *     1e-8,      // Surface pressure threshold
  *     "ns_structure.csv"  // Output file
  * );
- * 
+ *
  * double mass_grams = std::pow(10.0, log_mass);
  * double radius_cm = std::pow(10.0, log_radius);
  * double mass_solar = mass_grams / 1.989e33;
  * double radius_km = radius_cm / 1e5;
- * 
- * std::cout << "Neutron star: " << mass_solar << " M☉, " 
+ *
+ * std::cout << "Neutron star: " << mass_solar << " M☉, "
  *           << radius_km << " km" << std::endl;
- * 
+ *
  * // Scan over central densities for mass-radius relation
  * std::vector<double> densities = {1e15, 5e15, 1e16, 5e16, 1e17};
  * for (double rho_c : densities) {
@@ -320,29 +325,19 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
  * @see GSL documentation for spline initialization and management
  */
 TovResult non_rotating_stellar_structure_spline(
-    const gsl_spline* spline_inv,
-    gsl_interp_accel* acc_inv,
-    double min_logP,
-    double max_logP,
-    double rho_c,
-    double r_start,
-    double r_end,
-    double base_dlogr,
-    bool use_adaptive_stepping,
-    double pressure_threshold,
-    const std::string& output_filename,
-    const gsl_spline* spline_eps = nullptr,
-    gsl_interp_accel* acc_eps = nullptr
-);
-
+    const gsl_spline *spline_inv, gsl_interp_accel *acc_inv, double min_logP, double max_logP,
+    double rho_c, double r_start, double r_end, double base_dlogr, bool use_adaptive_stepping,
+    double pressure_threshold, const std::string &output_filename,
+    const gsl_spline *spline_eps = nullptr, gsl_interp_accel *acc_eps = nullptr);
 
 /**
- * @brief Computes the mass and pressure derivatives using the Newtonian equations of stellar structure.
+ * @brief Computes the mass and pressure derivatives using the Newtonian equations of stellar
+ * structure.
  *
  * @details
- * This function calculates the derivatives of logarithmic mass (\f$\log m\f$) and 
- * logarithmic pressure (\f$\log P\f$) with respect to the logarithmic radius (\f$\log r\f$) 
- * using the Newtonian framework. It assumes a polytropic equation of state (EOS) 
+ * This function calculates the derivatives of logarithmic mass (\f$\log m\f$) and
+ * logarithmic pressure (\f$\log P\f$) with respect to the logarithmic radius (\f$\log r\f$)
+ * using the Newtonian framework. It assumes a polytropic equation of state (EOS)
  * defined by the constants \p k and \p gamma.
  *
  * The derivatives are computed as:
@@ -389,7 +384,7 @@ TovResult non_rotating_stellar_structure_spline(
  * std::vector<double> state = {1.0, 15.0}; // log10(m), log10(P)
  * double k = 5.3802e9; // EOS constant for neutron gas
  * double gamma = 5.0 / 3.0; // Polytropic index
- * 
+ *
  * auto derivatives = newtonian(log_r, state, k, gamma);
  * std::cout << "dlogm_dlogr: " << derivatives[0] << std::endl;
  * std::cout << "dlogP_dlogr: " << derivatives[1] << std::endl;
@@ -397,23 +392,26 @@ TovResult non_rotating_stellar_structure_spline(
  *
  * @see tolman_oppenheimer_volkoff_derivatives() for the relativistic version
  */
-std::vector<double> newtonian(double log_r, const std::vector<double>& state, double k, double gamma);
+std::vector<double> newtonian(double log_r, const std::vector<double> &state, double k,
+                              double gamma);
 
 /**
- * @brief Computes the mass and pressure derivatives using the TOV (Tolman-Oppenheimer-Volkoff) equations.
+ * @brief Computes the mass and pressure derivatives using the TOV (Tolman-Oppenheimer-Volkoff)
+ * equations.
  *
  * @details
- * This function calculates the derivatives of logarithmic mass (\f$\log m\f$) and logarithmic pressure 
- * (\f$\log P\f$) with respect to the logarithmic radius (\f$\log r\f$) in the relativistic framework.
- * The TOV equations account for general relativistic corrections, providing a more accurate 
- * description of compact stellar objects like neutron stars.
+ * This function calculates the derivatives of logarithmic mass (\f$\log m\f$) and logarithmic
+ * pressure
+ * (\f$\log P\f$) with respect to the logarithmic radius (\f$\log r\f$) in the relativistic
+ * framework. The TOV equations account for general relativistic corrections, providing a more
+ * accurate description of compact stellar objects like neutron stars.
  *
  * The TOV equations are:
  * \f{eqnarray*}{
  * \frac{d(\log m)}{d(\log r)} &=& \frac{4 \pi r^3 \rho}{m} \\
- * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right) 
- *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right) 
- *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right) 
+ * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right)
+ *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right)
+ *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right)
  *                                  \cdot \left( 1 - \frac{2 G m}{r c^2} \right)^{-1}
  * \f}
  *
@@ -457,7 +455,7 @@ std::vector<double> newtonian(double log_r, const std::vector<double>& state, do
  * std::vector<double> state = {1.0, 15.0}; // log10(m), log10(P)
  * double k = 1.2293e15; // EOS constant for relativistic neutron gas
  * double gamma = 4.0 / 3.0; // Polytropic index
- * 
+ *
  * auto derivatives = tolman_oppenheimer_volkoff_derivatives(log_r, state, k, gamma);
  * std::cout << "dlogm_dlogr: " << derivatives[0] << std::endl;
  * std::cout << "dlogP_dlogr: " << derivatives[1] << std::endl;
@@ -465,23 +463,26 @@ std::vector<double> newtonian(double log_r, const std::vector<double>& state, do
  *
  * @see newtonian() for the non-relativistic version
  */
-std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r, const std::vector<double>& state, double k, double gamma);
+std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r,
+                                                           const std::vector<double> &state,
+                                                           double k, double gamma);
 
 /**
  * @brief Computes the mass and pressure derivatives using TOV equations with spline-based EOS.
  *
  * @details
- * This function calculates the derivatives of logarithmic mass (\f$\log m\f$) and logarithmic pressure 
- * (\f$\log P\f$) with respect to the logarithmic radius (\f$\log r\f$) in the relativistic framework,
- * using a tabulated equation of state via GSL spline interpolation. This extends the TOV solver
- * to support realistic, complex equations of state beyond simple polytropic relationships.
+ * This function calculates the derivatives of logarithmic mass (\f$\log m\f$) and logarithmic
+ * pressure
+ * (\f$\log P\f$) with respect to the logarithmic radius (\f$\log r\f$) in the relativistic
+ * framework, using a tabulated equation of state via GSL spline interpolation. This extends the TOV
+ * solver to support realistic, complex equations of state beyond simple polytropic relationships.
  *
  * The TOV equations are identical to the polytropic version:
  * \f{eqnarray*}{
  * \frac{d(\log m)}{d(\log r)} &=& \frac{4 \pi r^3 \rho}{m} \\
- * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right) 
- *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right) 
- *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right) 
+ * \frac{d(\log P)}{d(\log r)} &=& \left( - \frac{G m \rho}{P r} \right)
+ *                                  \cdot \left( 1 + \frac{P}{\rho c^2} \right)
+ *                                  \cdot \left( 1 + \frac{4 \pi P r^3}{m c^2} \right)
  *                                  \cdot \left( 1 - \frac{2 G m}{r c^2} \right)^{-1}
  * \f}
  *
@@ -538,11 +539,11 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r, const s
  * // Assuming splines are initialized
  * double log_r = 5.0; // log10(r) = 5 -> r = 100,000 cm
  * std::vector<double> state = {30.0, 25.0}; // log10(m), log10(P)
- * 
+ *
  * auto derivatives = tolman_oppenheimer_volkoff_derivatives_spline(
  *     log_r, state, spline_inv, acc_inv, 15.0, 35.0
  * );
- * 
+ *
  * std::cout << "dlogm_dlogr: " << derivatives[0] << std::endl;
  * std::cout << "dlogP_dlogr: " << derivatives[1] << std::endl;
  * @endcode
@@ -551,33 +552,25 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r, const s
  * @see non_rotating_stellar_structure_spline() for full integration example
  * @see GSL documentation for spline usage and error handling
  */
-std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
-    double log_r, 
-    const std::vector<double>& state, 
-    const gsl_spline* spline_inv, 
-    gsl_interp_accel* acc_inv, 
-    double min_logP, 
-    double max_logP
-);
+std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(double log_r,
+                                                                  const std::vector<double> &state,
+                                                                  const gsl_spline *spline_inv,
+                                                                  gsl_interp_accel *acc_inv,
+                                                                  double min_logP, double max_logP);
 
 std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
-    double log_r,
-    const std::vector<double>& state,
-    const gsl_spline* rho_of_logP,  gsl_interp_accel* acc_rho,
-    const gsl_spline* eps_of_logP,  gsl_interp_accel* acc_eps,
-    double min_logP,
-    double max_logP
-);
-
+    double log_r, const std::vector<double> &state, const gsl_spline *rho_of_logP,
+    gsl_interp_accel *acc_rho, const gsl_spline *eps_of_logP, gsl_interp_accel *acc_eps,
+    double min_logP, double max_logP);
 
 /**
  * @brief EOS parameters are now handled by the PolytropicEOS class.
- * 
+ *
  * **Migration Notice:**
- * The `set_eos_parameters()` function has been removed and replaced with the 
+ * The `set_eos_parameters()` function has been removed and replaced with the
  * modular PolytropicEOS system. EOS parameters (k, γ, name) are now obtained
  * automatically within `non_rotating_stellar_structure()` using:
- * 
+ *
  * ```cpp
  * PolytropicEOS eos_calculator;
  * auto eos_data = eos_calculator.getEOSParameters(eos_type);
@@ -585,19 +578,19 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
  * double gamma = eos_data.gamma;
  * std::string name = eos_data.name;
  * ```
- * 
+ *
  * **Benefits of New Architecture:**
  * - Centralized EOS parameter management
  * - Consistent parameter values across the codebase
  * - Enhanced validation and error checking
  * - Support for custom mean molecular weights (μₑ)
  * - Extensible framework for additional EOS types
- * 
+ *
  * **Parameter Values:**
  * The PolytropicEOS class provides the same parameter values that were
  * previously hardcoded:
  * - Electron non-relativistic: k = 1.0036×10¹³, γ = 5/3
- * - Electron relativistic: k = 1.2435×10¹⁵, γ = 4/3  
+ * - Electron relativistic: k = 1.2435×10¹⁵, γ = 4/3
  * - Neutron non-relativistic: k = 5.3802×10⁹, γ = 5/3
  * - Neutron relativistic: k = 1.2293×10¹⁵, γ = 4/3
  *
@@ -607,7 +600,8 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
  */
 
 /**
- * @brief Generates a descriptive filename for output data based on the EOS name and central density.
+ * @brief Generates a descriptive filename for output data based on the EOS name and central
+ * density.
  *
  * @details
  * This function constructs a filename for storing stellar structure data by combining
@@ -620,7 +614,7 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
  * **Density Formatting:**
  * The central density is formatted using scientific notation with specific transformations:
  * - Uses 2 decimal places precision (e.g., 1.23e+09)
- * - Replaces '+' with 'p' (e.g., 1.23e+09 → 1.23ep09)  
+ * - Replaces '+' with 'p' (e.g., 1.23e+09 → 1.23ep09)
  * - Replaces 'e' with 'p' (e.g., 1.23ep09 → 1.23pp09)
  * - Final result: 1.23pp09
  *
@@ -650,7 +644,7 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
  * std::string file2 = get_filename(name2, rho_c2);
  * // Input: 1.23e9 → Scientific: "1.23e+09" → Replace '+': "1.23ep09" → Replace 'e': "1.23pp09"
  * // Result: "data/electron_non_relativistic_rhoc_1.23pp09.csv"
- * 
+ *
  * // Example 3: Negative exponent
  * std::string name3 = "electron_relativistic";
  * double rho_c3 = 1.5e-3;
@@ -670,10 +664,10 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
  *
  * @warning Directory "data/" must exist before using the generated filename
  * @warning Large density values may create very long filenames
- * 
+ *
  * @see PolytropicEOS::getEOSParameters() for valid EOS names
  * @see non_rotating_stellar_structure() for usage context
  */
-std::string get_filename(const std::string& name, double rho_c);
+std::string get_filename(const std::string &name, double rho_c);
 
 #endif // NON_ROTATING_STELLAR_STRUCTURE_HPP

@@ -55,7 +55,7 @@ A comprehensive C++ and Python framework for studying compact objects using both
 - **GNU Scientific Library (GSL)** for advanced mathematical functions
 - **Make build system**
 
-### Python Components  
+### Python Components
 - **Python 3.8+**
 - **Poetry** for dependency management
 - **Core packages:** numpy, pandas, matplotlib, pyyaml

@@ -6,18 +6,18 @@ from scipy.signal import argrelextrema
 # Define a function to calculate Gamma using finite differences
 def calculate_gamma_physics(log_P, log_rho):
     gamma = np.zeros_like(log_rho)
-    
+
     # Use central differences for interior points
     for i in range(1, len(log_rho)-1):
         dlogP = log_P[i+1] - log_P[i-1]
         dlogrho = log_rho[i+1] - log_rho[i-1]
         if dlogrho != 0:
             gamma[i] = dlogP / dlogrho
-    
+
     # Use forward and backward differences at the endpoints
     gamma[0] = (log_P[1] - log_P[0]) / (log_rho[1] - log_rho[0])
     gamma[-1] = (log_P[-1] - log_P[-2]) / (log_rho[-1] - log_rho[-2])
-    
+
     return gamma
 
 # List of file suffixes corresponding to different magnetic field values
@@ -68,10 +68,10 @@ colors = ['black', 'red', 'blue', 'green', 'orange']
 # Loop over each file suffix
 for idx, suffix in enumerate(file_suffixes):
     filename = f"magnetic_bps_eos_B_{suffix}.csv"
-    
+
     # Load data from the CSV file
     data = pd.read_csv(filename)
-    
+
     # Extract columns
     log_rho = data['log_rho'].values
     log_P = data['log_P'].values
@@ -82,14 +82,14 @@ for idx, suffix in enumerate(file_suffixes):
     log_rho = log_rho[mask]
     log_P = log_P[mask]
     log_n = log_n[mask]
-    
+
     # Calculate the adiabatic index Gamma
     Gamma = calculate_gamma_physics(log_P, log_rho)
-    
+
     # Plot log(P) vs. log(ρ) on the EOS figure
     ax_eos.scatter(log_rho, log_P, s=5, color=colors[idx],
                    label=f"B = {magnetic_fields[suffix]}")
-    
+
     # Plot only the upper envelope beyond the first two oscillations
     ax_gamma.scatter(log_rho, Gamma, s=10, color=colors[idx],
                      label=f"B = {magnetic_fields[suffix]}")

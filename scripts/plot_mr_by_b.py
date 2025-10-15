@@ -13,7 +13,7 @@ def list_b_dirs(root):
     for d in sorted(glob.glob(os.path.join(root, "b_*"))):
         base = os.path.basename(d)           # e.g. b_1e-03
         m = re.match(r"b_([0-9.eE+-]+)$", base)
-        if not m: 
+        if not m:
             continue
         try:
             b = float(m.group(1))
@@ -90,7 +90,7 @@ def main():
         files = sorted(glob.glob(os.path.join(path, "*.csv")))
         R_km, M_solar = collect_family(path, r_end_cm=args.r_end_cm)
         used = len(R_km)
-        summary.append((b, len(files), used, 
+        summary.append((b, len(files), used,
                         (float(np.min(R_km)) if used else np.nan,
                         float(np.max(R_km)) if used else np.nan)))
 
@@ -118,7 +118,7 @@ def main():
         # overlay residuals for each b (skip the reference itself)
         for b, path in b_dirs:
             R_km, M_solar = collect_family(path, r_end_cm=args.r_end_cm)
-            if R_km.size == 0 or b == ref_b: 
+            if R_km.size == 0 or b == ref_b:
                 continue
             # evaluate ΔM at radii common to both (clip to overlap range)
             Rmin = max(np.min(R_km), np.min(Rref))
@@ -136,7 +136,7 @@ def main():
 
     ax2.axhline(0, ls=":", lw=1)
     ax2.set_xlabel("Radius R (km)")
-    ax2.set_ylabel(r"ΔM ($M_\odot$)") 
+    ax2.set_ylabel(r"ΔM ($M_\odot$)")
     ax2.grid(True, alpha=0.3)
 
     plt.savefig(args.out, dpi=200)

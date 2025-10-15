@@ -17,7 +17,7 @@ def calculate_gamma(density, pressure):
     # Convert to log space
     log_rho = np.log(density)
     log_p = np.log(pressure)
-    
+
     # Calculate derivative using central differences
     gamma = np.gradient(log_p, log_rho)
     return gamma

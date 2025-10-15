@@ -1,9 +1,9 @@
 #ifndef RK4_HPP
 #define RK4_HPP
 
-#include <vector>
-#include <stdexcept>
 #include <functional>
+#include <stdexcept>
+#include <vector>
 
 /**
  * @file rk4.hpp
@@ -12,8 +12,8 @@
  * @date 2025-05-25
  *
  * @details
- * This file implements the classical 4th-order Runge-Kutta method for solving 
- * ordinary differential equations (ODEs). The RK4 method provides a balance between 
+ * This file implements the classical 4th-order Runge-Kutta method for solving
+ * ordinary differential equations (ODEs). The RK4 method provides a balance between
  * accuracy and computational efficiency in numerical simulations.
  *
  * The method solves initial value problems of the form:
@@ -42,18 +42,18 @@
  * - Global truncation error: \f$O(h^4)\f$
  *
  * Example usage with a simple harmonic oscillator:
-* @code{.cpp}
-* // System: \f$\frac{d^2x}{dt^2} = -\omega^2x\f$
-* auto derivatives = [](double t, const std::vector<double>& state) 
-*     -> std::vector<double> 
-* {
-*     const double omega = 2.0 * M_PI;  // Angular frequency
-*     return {
-*         state[1],                     // dx/dt = v
-*         -omega * omega * state[0]     // dv/dt = -\omega^2x
-*     };
-* };
-* @endcode
+ * @code{.cpp}
+ * // System: \f$\frac{d^2x}{dt^2} = -\omega^2x\f$
+ * auto derivatives = [](double t, const std::vector<double>& state)
+ *     -> std::vector<double>
+ * {
+ *     const double omega = 2.0 * M_PI;  // Angular frequency
+ *     return {
+ *         state[1],                     // dx/dt = v
+ *         -omega * omega * state[0]     // dv/dt = -\omega^2x
+ *     };
+ * };
+ * @endcode
  *
  * @note The step size must be chosen carefully based on the system's characteristics
  * @warning Not optimized for stiff differential equations
@@ -66,7 +66,7 @@
  * @brief Performs one RK4 integration step to advance an ODE system.
  *
  * @details
- * Implements the classical 4th order Runge-Kutta method for solving 
+ * Implements the classical 4th order Runge-Kutta method for solving
  * ordinary differential equations (ODEs) of the form:
  * \f[ \frac{dy}{dt} = f(t, y) \f]
  *
@@ -95,24 +95,25 @@
  *         - If derivatives dimension \f$\neq\f$ state dimension
  *
  * Example using a damped harmonic oscillator:
-* // System: \f$\frac{d^2x}{dt^2} + 2\zeta\omega_0\frac{dx}{dt} + \omega_0^2x = 0\f$
-* auto derivatives = [](double t, const std::vector<double>& state) 
-*     -> std::vector<double> 
-* {
-*     const double omega0 = 2.0 * M_PI;  // Natural frequency
-*     const double zeta = 0.1;           // Damping ratio
-*     
-*     return {
-*         state[1],                        // dx/dt = v
-*         -2.0 * zeta * omega0 * state[1]  // dv/dt = -2\zeta\omega_0v 
-*         - omega0 * omega0 * state[0]     //        -\omega_0^2x
-*     };
-* };
+ * // System: \f$\frac{d^2x}{dt^2} + 2\zeta\omega_0\frac{dx}{dt} + \omega_0^2x = 0\f$
+ * auto derivatives = [](double t, const std::vector<double>& state)
+ *     -> std::vector<double>
+ * {
+ *     const double omega0 = 2.0 * M_PI;  // Natural frequency
+ *     const double zeta = 0.1;           // Damping ratio
+ *
+ *     return {
+ *         state[1],                        // dx/dt = v
+ *         -2.0 * zeta * omega0 * state[1]  // dv/dt = -2\zeta\omega_0v
+ *         - omega0 * omega0 * state[0]     //        -\omega_0^2x
+ *     };
+ * };
  *
  * @note Explicit, single-step method suitable for non-stiff systems
  * @warning Not efficient for stiff differential equations
  */
-std::vector<double> rk4_step(double t, double dt, const std::vector<double>& state,
-    const std::function<std::vector<double>(double, const std::vector<double>&)> derivatives);
+std::vector<double>
+rk4_step(double t, double dt, const std::vector<double> &state,
+         const std::function<std::vector<double>(double, const std::vector<double> &)> derivatives);
 
 #endif // RK4_HPP

@@ -23,7 +23,7 @@ def project_root():
     """Get the project root directory."""
     return Path(__file__).parent.parent.parent
 
-@pytest.fixture(scope="session") 
+@pytest.fixture(scope="session")
 def scripts_dir(project_root):
     """Get the scripts directory."""
     return project_root / "scripts"
@@ -85,7 +85,7 @@ def sample_stellar_model_data():
     log_r = np.linspace(3, 6, n_points)  # log10(radius) from 1km to 1000km
     log_m = np.linspace(30, 33.3, n_points)  # log10(mass) realistic range
     log_p = np.linspace(35, 25, n_points)  # log10(pressure) decreasing outward
-    
+
     return pd.DataFrame({
         'log_r[cm]': log_r,
         'log_m[g]': log_m,
@@ -96,16 +96,16 @@ def sample_stellar_model_data():
 def sample_hybrid_csv_file(sample_data_dir, sample_stellar_model_data):
     """Create a sample hybrid EOS CSV file for testing."""
     sample_data_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Create a realistic filename following C++ convention
     filename = "tov_solution_magnetic_bps_bbp_polytrope_1.00e+16.csv"
     filepath = sample_data_dir / filename
-    
+
     # Save the sample data
     sample_stellar_model_data.to_csv(filepath, index=False)
-    
+
     yield filepath
-    
+
     # Cleanup with error handling
     try:
         if filepath.exists():
@@ -117,16 +117,16 @@ def sample_hybrid_csv_file(sample_data_dir, sample_stellar_model_data):
 def sample_neutron_csv_file(sample_data_dir, sample_stellar_model_data):
     """Create a sample neutron relativistic EOS CSV file for testing."""
     sample_data_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Create filename with C++ encoded density notation
     filename = "neutron_relativistic_rhoc_5.00pp18.csv"
     filepath = sample_data_dir / filename
-    
+
     # Save the sample data
     sample_stellar_model_data.to_csv(filepath, index=False)
-    
+
     yield filepath
-    
+
     # Cleanup with error handling
     try:
         if filepath.exists():
@@ -138,26 +138,26 @@ def sample_neutron_csv_file(sample_data_dir, sample_stellar_model_data):
 def multiple_hybrid_files(sample_data_dir, sample_stellar_model_data):
     """Create multiple hybrid EOS files for dataset testing."""
     sample_data_dir.mkdir(parents=True, exist_ok=True)
-    
+
     densities = ["1.00e+15", "5.00e+15", "1.00e+16", "5.00e+16", "1.00e+17"]
     filepaths = []
-    
+
     for density in densities:
         filename = f"tov_solution_magnetic_bps_bbp_polytrope_{density}.csv"
         filepath = sample_data_dir / filename
-        
+
         # Vary the data slightly for each density
         data = sample_stellar_model_data.copy()
         # Add some realistic variation based on density
         density_factor = float(density.replace('e+', 'e'))
         data['log_m[g]'] *= (1 + np.log10(density_factor/1e15) * 0.1)
         data['log_r[cm]'] *= (1 - np.log10(density_factor/1e15) * 0.05)
-        
+
         data.to_csv(filepath, index=False)
         filepaths.append(filepath)
-    
+
     yield filepaths
-    
+
     # Cleanup with error handling for WSL permission issues
     for filepath in filepaths:
         try:
@@ -171,7 +171,7 @@ def multiple_hybrid_files(sample_data_dir, sample_stellar_model_data):
 def mock_yaml_config(mock_configs_dir, temp_output_dir):
     """Create a mock YAML configuration file for testing."""
     mock_configs_dir.mkdir(parents=True, exist_ok=True)
-    
+
     config_content = f"""
 # Test configuration for stellar plotter
 data_directory: "{Path(__file__).parent / 'fixtures' / 'sample_data'}"
@@ -196,12 +196,12 @@ performance:
   enable_parallel_loading: true
   chunk_size: 10
 """
-    
+
     config_file = mock_configs_dir / "test_config.yaml"
     config_file.write_text(config_content)
-    
+
     yield config_file
-    
+
     # Cleanup with error handling
     try:
         if config_file.exists():
@@ -214,12 +214,12 @@ def setup_test_environment(monkeypatch, temp_output_dir):
     """Set up test environment with proper paths and cleanup."""
     # Ensure matplotlib doesn't try to display plots during testing
     monkeypatch.setenv("MPLBACKEND", "Agg")
-    
+
     # Set up temporary directories
     os.makedirs(temp_output_dir, exist_ok=True)
-    
+
     yield
-    
+
     # Cleanup is handled by temp_output_dir fixture
 
 # Custom markers for test organization
@@ -237,7 +237,7 @@ def pytest_collection_modifyitems(config, items):
         # Mark tests with 'benchmark' in name as slow
         if "benchmark" in item.name or "performance" in item.name:
             item.add_marker(pytest.mark.slow)
-        
+
         # Mark visual tests
         if "visual" in item.name or "plot" in item.name:
-            item.add_marker(pytest.mark.visual) 
+            item.add_marker(pytest.mark.visual)

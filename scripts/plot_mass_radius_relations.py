@@ -8,7 +8,7 @@ import re
 # ------------------------------------------------------------------------
 # 1. Gather CSV files for the hybrid EoS
 # ------------------------------------------------------------------------
-csv_pattern_hybrid = '/mnt/c/Users/karan/Dropbox/KARAN/2 Areas/Education/PhD/3 Research/pulsarmhd/data/tov_solution_magnetic_bps_bbp_polytrope_*.csv'
+csv_pattern_hybrid = '/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data//tov_solution_magnetic_bps_bbp_polytrope_*.csv'
 file_list_hybrid = glob.glob(csv_pattern_hybrid)
 
 if not file_list_hybrid:
@@ -78,21 +78,21 @@ def extract_data(file_list, parse_func):
         if 'log_m[g]' not in df.columns or 'log_r[cm]' not in df.columns:
             print(f"Skipping file {filename} due to missing columns.")
             continue
-        
+
         # Get last valid log(m) and log(r)
         last_mass_log = get_last_valid_value(df, 'log_m[g]')
         last_radius_log = get_last_valid_value(df, 'log_r[cm]')
-        
+
         # Convert from log scale to physical units
         mass_solar = 10**last_mass_log / 1.989e33  # from grams to M_sun
         radius_km  = 10**last_radius_log / 1e5     # from cm to km
-        
+
         # Parse log10(rho_c)
         log_rho_c = parse_func(filename)
         if log_rho_c is None:
             print(f"Could not parse central density from filename: {filename}")
             continue
-        
+
         data.append((mass_solar, radius_km, log_rho_c))
     return data
 

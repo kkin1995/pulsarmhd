@@ -12,7 +12,7 @@ This document outlines the comprehensive testing strategy for the PulsarMHD stel
 - **Integration**: Makefile-based build and execution
 - **Focus**: Computational accuracy and numerical stability
 
-### Python Testing Framework  
+### Python Testing Framework
 - **Framework**: pytest with comprehensive plugin ecosystem
 - **Coverage**: Data processing, visualization, CLI interface
 - **Integration**: Poetry dependency management + Makefile integration
@@ -29,7 +29,7 @@ This document outlines the comprehensive testing strategy for the PulsarMHD stel
 make test-eos
 ```
 - **Magnetic BPS EOS**: Pressure/density calculations
-- **Non-magnetic NPE Gas**: Ideal gas equation of state  
+- **Non-magnetic NPE Gas**: Ideal gas equation of state
 - **Parameter validation**: Input boundary checking
 - **Factory pattern**: EOS type creation and management
 - **Error handling**: Invalid parameter detection
@@ -47,7 +47,7 @@ make test-polytropic
 
 #### 3. **Stellar Structure Tests** ✅ **PASSING (5/5)**
 ```bash
-make test-stellar-structure  
+make test-stellar-structure
 ```
 - **TOV equation integration**: Relativistic stellar equilibrium
 - **Newtonian physics**: Classical stellar structure
@@ -62,7 +62,7 @@ make test
 
 # Run specific test suites
 make test-eos                    # EOS calculator tests
-make test-polytropic            # Polytropic EOS tests  
+make test-polytropic            # Polytropic EOS tests
 make test-stellar-structure     # Stellar structure tests
 
 # Clean test artifacts
@@ -133,7 +133,7 @@ make test-python
 
 # Run specific test categories
 make test-python-unit           # Unit tests only
-make test-python-integration    # Integration tests only  
+make test-python-integration    # Integration tests only
 make test-python-performance    # Performance tests only
 make test-python-visual         # Visual regression tests only
 
@@ -162,7 +162,7 @@ make test-all
 
 # Results Summary:
 # C++ Tests: 21/21 passing ✅
-# Python Tests: 68/68 passing ✅  
+# Python Tests: 68/68 passing ✅
 # Total: 89/89 tests passing ✅
 ```
 
@@ -206,7 +206,7 @@ EXPECT_NO_THROW(expression);
 ```python
 # pytest with comprehensive plugin ecosystem
 pytest                  # Core testing framework
-pytest-cov            # Coverage reporting  
+pytest-cov            # Coverage reporting
 pytest-benchmark      # Performance testing
 pytest-mpl            # Visual regression testing
 pytest-mock           # Mocking utilities
@@ -249,7 +249,7 @@ hypothesis             # Property-based testing
 4. Add to Makefile test targets
 5. Verify integration with `make test`
 
-#### Python Tests  
+#### Python Tests
 1. Create test file in appropriate `tests/python/` subdirectory
 2. Use pytest conventions: `test_*.py` files, `test_*` functions
 3. Leverage fixtures from `conftest.py` for common setup
@@ -299,4 +299,4 @@ hypothesis             # Property-based testing
 ---
 
 *Last Updated: December 2024*
-*Total Test Coverage: 89/89 tests passing ✅* 
+*Total Test Coverage: 89/89 tests passing ✅*

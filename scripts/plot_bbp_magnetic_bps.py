@@ -25,7 +25,7 @@ plt.plot(
 # Loop through different Magnetic BPS files and plot them
 for B in magnetic_fields:
     bps_file_path = bps_file_template.format(B)
-    
+
     try:
         # Load Magnetic BPS data
         bps_data = pd.read_csv(bps_file_path)
@@ -60,7 +60,7 @@ plt.figure(figsize=(8, 6))
 # Compute pressure difference for each BPS file
 for B in magnetic_fields:
     bps_file_path = bps_file_template.format(B)
-    
+
     try:
         # Load Magnetic BPS data
         bps_data = pd.read_csv(bps_file_path)

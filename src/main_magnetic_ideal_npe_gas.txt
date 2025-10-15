@@ -110,7 +110,7 @@ int main() {
     //       << "  B_c_protons = " << B_c_protons << " G\n"
     //       << "  lambda_e = " << lambda_e << " cm\n"
     //       << "  lambda_p = " << lambda_p << " cm\n\n";
-    
+
     std::string filename = "ideal_magnetic_npe_gas_eos.csv";
     std::ofstream outfile(filename);
     if (!outfile.is_open()) {
@@ -138,7 +138,7 @@ int main() {
                 nu_m_electron = floor((pow(gamma_e_mid, 2.0) - 1.0) / (2.0 * B_ratio_electron));
 
                 std::cout << "Maximum Landau Level (Electrons): " << nu_m_electron << "\n";
-                
+
                 double summation_n_e = 0.0;
                 double summation_epsilon_e = 0.0;
                 double summation_P_e = 0.0;
@@ -204,7 +204,7 @@ int main() {
                     x_p = sqrt(pow(gamma_p_mid, 2.0) - 1.0 - (2.0 * nu * B_ratio_proton));
                     if (nu == 0) {
                         g_nu = 1.0;
-                        
+
                     } else {
                         g_nu =  2.0;
                     }
@@ -213,12 +213,12 @@ int main() {
                     summation_epsilon_p += g_nu * (1.0 + 2.0 * nu * B_ratio_proton) * psi(x_p / pow(1.0 + 2.0 * nu * B_ratio_proton, 1.0 / 2.0));
                     summation_P_p += g_nu * (1.0 + 2.0 * nu * B_ratio_proton) * eta(x_p / pow(1.0 + 2.0 * nu * B_ratio_proton, 1.0 / 2.0));
                 }
-                
+
                 double n_p_calculated = ((2.0 * B_ratio_proton) / (pow((2.0 * M_PI), 2.0) * pow(lambda_p, 3.0))) * summation_n_p;
                 epsilon_p = (2.0 * B_ratio_proton / pow(2.0 * M_PI, 2.0) * pow(lambda_p, 3.0)) * m_proton * pow(c, 2.0) * summation_epsilon_p;
                 P_p = (2.0 * B_ratio_proton / (pow(2.0 * M_PI, 2.0) * pow(lambda_p, 3.0))) * m_proton * pow(c, 2.0) * summation_P_p;
 
-                
+
                 if (n_p_calculated > n_p) {
                     gamma_p_max = gamma_p_mid;
                 } else if (n_p_calculated < n_p) {
@@ -261,7 +261,7 @@ int main() {
             }
 
             if (fabs(n_e - n_p) > 1e-10 * n_e) {
-                std::cout << "Warning: Charge neutrality violation: " 
+                std::cout << "Warning: Charge neutrality violation: "
                         << fabs(n_e - n_p)/n_e << " at n_B = " << n_B << "\n";
             }
 
