@@ -13,11 +13,19 @@
 #include <gsl/gsl_errno.h>
 #include <iomanip>
 #include <iostream>
+#include <numbers>
 #include <sstream>
 #include <string>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
+#if __cplusplus >= 202002L
+#include <numbers>
+namespace {
+constexpr double kPi = std::numbers::pi_v<double>;
+}
+#else
+namespace {
+constexpr double kPi = 3.141592653589793238462643383279502884L;
+}
 #endif
 
 std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType eos_type,
@@ -64,7 +72,9 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
   }
 
   double fraction = 4.0 / 3.0;
-  double log_m0 = log10(fraction) + log10(M_PI) + 3.0 * log10(r_start) + log10(rho_c);
+  const double log_m0 =
+      std::log10(fraction) + std::log10(kPi) + 3.0 * std::log10(r_start) + std::log10(rho_c);
+
   double log_p0 = log10(k) + (gamma * log10(rho_c));
   std::vector<double> state = {log_m0, log_p0};
 
@@ -186,7 +196,7 @@ TovResult non_rotating_stellar_structure_spline(
   // Initial mass (same as before)
   const double fraction = 4.0 / 3.0;
   const double log_m0 =
-      std::log10(fraction) + std::log10(M_PI) + 3.0 * std::log10(r_start) + std::log10(rho_c);
+      std::log10(fraction) + std::log10(kPi) + 3.0 * std::log10(r_start) + std::log10(rho_c);
 
   // Find log_p0 by bisection using inverse spline (same logic as before)
   auto rho_of_logP = [&](double lp) { return gsl_spline_eval(spline_inv, lp, acc_inv); };
