@@ -1,7 +1,11 @@
 #include "non_rotating_stellar_structure.hpp"
 
+#include "eos_view.hpp"
+#include "integrate_tov.hpp"
 #include "polytropic_eos.hpp"
-#include "rk4.hpp"
+#include "polytropic_view.hpp"
+#include "spline_view.hpp"
+#include "tov_derivatives.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -59,101 +63,41 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
     k = 1.2435e15 / std::pow(mu_e, 4.0 / 3.0);
   }
 
-  std::string filename = get_filename(name, rho_c);
-  std::ofstream outfile(filename);
-  if (!outfile.is_open()) {
-    std::cerr << "Error opening file: " << filename << '\n';
-  }
-  std::cout << "Writing to file: " << filename << '\n';
-
   double fraction = 4.0 / 3.0;
-  double log_r_start = log10(r_start);
-  double log_r_end = log10(r_end);
   double log_m0 = log10(fraction) + log10(M_PI) + 3.0 * log10(r_start) + log10(rho_c);
   double log_p0 = log10(k) + (gamma * log10(rho_c));
   std::vector<double> state = {log_m0, log_p0};
 
-  std::cout << "Initial conditions:" << '\n';
-  std::cout << "  log_r_start = " << log_r_start << '\n';
-  std::cout << "  log_m0 = " << log_m0 << '\n';
-  std::cout << "  log_p0 = " << log_p0 << '\n';
-  std::cout << "  k = " << k << ", gamma = " << gamma << '\n';
+  // Adapter + integrate
+  PolytropicEOSView view{k, gamma};
 
-  outfile << "log_r[cm],log_m[g],log_P[dyne/cm^2]\n";
+  IntegrateOpts opts;
+  opts.r_start = r_start;
+  opts.r_end = r_end;
+  opts.base_dlogr = dlogr;
+  opts.use_adaptive_stepping = false; // matches your fixed-step polytropic run
+  opts.pressure_threshold = 1e15;     // you used 1e15 for NS surface in polytropic loop
+  opts.output_filename = get_filename(name, rho_c);
 
-  int idx = 0;
-  double log_r = log_r_start;
+  const auto res = integrate_structure(view, GravityModel::RelativisticTOV,
+                                       MassSource::UseRhoForMass, rho_c, log_m0, log_p0, opts);
 
-  while (log_r < log_r_end) {
-    state = rk4_step(log_r, dlogr, state, [k, gamma](double r, const std::vector<double> &s) {
-      return tolman_oppenheimer_volkoff_derivatives(r, s, k, gamma);
-    });
-    log_r += dlogr;
-    outfile << log_r << "," << state[0] << "," << state[1] << "\n";
-
-    // Stop if pressure drops below a threshold
-    // Use 1e15 for Neutron Stars
-    if (state[1] < log10(1e15)) { // Reasonable threshold: 10^15 dyne/cm² for surface detection
-      std::cout << "Surface reached at log_r: " << log_r << '\n';
-      break;
-    }
-
-    if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
-      std::cout << "Non-finite values at log_r: " << log_r << '\n';
-      break;
-    }
-
-    if (idx % 100 == 0) {
-      std::cout << "log_r: " << log_r << ", log_m: " << state[0] << ", log_P: " << state[1] << '\n';
-    }
-
-    idx += 1;
-  }
-  outfile.close();
-  // At end of integration
-  return {idx, state[0], log_r};
+  // Preserve old return shape (steps, log10(m_surface), log10(r_surface))
+  return {res.steps, res.log10_m_surface, res.log10_r_surface};
 }
 
 std::vector<double> newtonian(double log_r, const std::vector<double> &state, double k,
                               double gamma) {
-  double m = pow(10.0, state[0]);
-  double P = pow(10.0, state[1]);
-  double r = pow(10.0, log_r);
-  double log_rho = (state[1] - log10(k)) / gamma;
-  double rho = pow(10.0, log_rho);
-
-  double dlogm_dlogr = ((4.0 * M_PI * pow(r, 3.0) * rho) / m);
-  double dlogP_dlogr = (-(G * m * rho) / (P * r));
-
-  // std::cout << "Debug: r: " << r << ", dlogm_dlogr: " << dlogm_dlogr
-  //           << ", dlogP_dlogr: " << dlogP_dlogr << '\n';
-
-  return {dlogm_dlogr, dlogP_dlogr};
+  PolytropicEOSView view{k, gamma};
+  return tov_derivatives(log_r, state, view, GravityModel::Newtonian, MassSource::UseRhoForMass);
 }
 
 std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r,
                                                            const std::vector<double> &state,
                                                            double k, double gamma) {
-  double m = pow(10.0, state[0]);
-  double P = pow(10.0, state[1]);
-  double r = pow(10.0, log_r);
-  double log_rho = (state[1] - log10(k)) / gamma;
-  double rho = pow(10.0, log_rho);
-
-  // Add check for m approaching zero
-  if (m < 1e-30) {
-    m = 1e-30; // Prevent division by zero
-  }
-
-  double dlogm_dlogr = ((4.0 * M_PI * pow(r, 3.0) * rho) / m);
-  double first_factor = (-(G * m * rho) / (P * r));
-  double second_factor = (1.0 + P / (rho * pow(c, 2.0)));
-  double third_factor = 1.0 + ((4.0 * M_PI * P * pow(r, 3.0)) / (m * pow(c, 2.0)));
-  double fourth_factor = 1.0 / (1.0 - ((2.0 * G * m) / (r * pow(c, 2.0))));
-
-  double dlogP_dlogr = (first_factor * second_factor * third_factor * fourth_factor);
-
-  return {dlogm_dlogr, dlogP_dlogr};
+  PolytropicEOSView view{k, gamma};
+  return tov_derivatives(log_r, state, view, GravityModel::RelativisticTOV,
+                         MassSource::UseRhoForMass);
 }
 
 std::string get_filename(const std::string &name, double rho_c) {
@@ -188,38 +132,9 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
    * - Error handling for extrapolation cases
    */
 
-  double m = pow(10.0, state[0]);
-  double r = pow(10.0, log_r);
-
-  // Add check for m approaching zero (same as polytropic version)
-  if (m < 1e-30) {
-    m = 1e-30; // Prevent division by zero
-  }
-
-  // Clamp pressure to EOS validity range
-  double log_P = state[1];
-  if (log_P < min_logP) {
-    log_P = min_logP;
-  }
-  if (log_P > max_logP) {
-    log_P = max_logP;
-  }
-
-  // Get density from spline interpolation: log_rho = f^(-1)(log_P)
-  double P = std::pow(10.0, log_P);
-  double log_rho = gsl_spline_eval(spline_inv, log_P, acc_inv);
-  double rho = pow(10.0, log_rho);
-
-  // Compute TOV derivatives (identical to polytropic version)
-  double dlogm_dlogr = ((4.0 * M_PI * pow(r, 3.0) * rho) / m);
-  double first_factor = (-(G * m * rho) / (P * r));
-  double second_factor = (1.0 + P / (rho * pow(c, 2.0)));
-  double third_factor = 1.0 + ((4.0 * M_PI * P * pow(r, 3.0)) / (m * pow(c, 2.0)));
-  double fourth_factor = 1.0 / (1.0 - ((2.0 * G * m) / (r * pow(c, 2.0))));
-
-  double dlogP_dlogr = (first_factor * second_factor * third_factor * fourth_factor);
-
-  return {dlogm_dlogr, dlogP_dlogr};
+  SplineEOSView view{spline_inv, acc_inv, min_logP, max_logP};
+  return tov_derivatives(log_r, state, view, GravityModel::RelativisticTOV,
+                         MassSource::UseRhoForMass);
 }
 
 // ε-aware TOV derivatives using tabulated splines.
@@ -231,40 +146,11 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
     double log_r, const std::vector<double> &state, const gsl_spline *rho_of_logP,
     gsl_interp_accel *acc_rho, const gsl_spline *eps_of_logP, gsl_interp_accel *acc_eps,
     double min_logP, double max_logP) {
-  double m = std::pow(10.0, state[0]);
-  double r = std::pow(10.0, log_r);
-  if (m < 1e-30) {
-    m = 1e-30;
-  }
 
-  // Clamp pressure and evaluate required fields
-  double logP = state[1];
-  if (logP < min_logP) {
-    logP = min_logP;
-  }
-  if (logP > max_logP) {
-    logP = max_logP;
-  }
+  SplineEOSView view{rho_of_logP, acc_rho, min_logP, max_logP, eps_of_logP, acc_eps};
 
-  const double P = std::pow(10.0, logP); // dyne/cm^2 = erg/cm^3
-
-  // ρ from inverse spline (still useful for surface handling / diagnostics)
-  const double log_rho = gsl_spline_eval(rho_of_logP, logP, acc_rho);
-  const double rho = std::pow(10.0, log_rho); // g/cm^3
-
-  // ε from spline if provided; else fallback ε ≈ ρ c^2
-  const double eps = (eps_of_logP) ? gsl_spline_eval(eps_of_logP, logP, acc_eps) // erg/cm^3
-                                   : rho * c * c;                                // fallback
-
-  // dm/dr = 4π r^2 ε / c^2  ⇒ dlogm/dlogr = (r/m) dm/dr
-  const double dlogm_dlogr = (4.0 * M_PI * r * r * r * (eps / (c * c))) / m;
-
-  // dlogP/dlogr = (r/P) * dP/dr with GR TOV using ε
-  const double denom = 1.0 - (2.0 * G * m) / (r * c * c);
-  const double dlogP_dlogr =
-      -(G * (eps + P) * (m + 4.0 * M_PI * r * r * r * P / (c * c))) / (P * r * denom * (c * c));
-
-  return {dlogm_dlogr, dlogP_dlogr};
+  return tov_derivatives(log_r, state, view, GravityModel::RelativisticTOV,
+                         MassSource::UseEpsilonForMass);
 }
 
 TovResult non_rotating_stellar_structure_spline(
@@ -297,143 +183,35 @@ TovResult non_rotating_stellar_structure_spline(
   // In practice, you'd pass both forward and inverse splines
 
   // Initialize output file if filename provided
-  std::ofstream outfile;
-  bool write_output = !output_filename.empty();
-  if (write_output) {
-    outfile.open(output_filename);
-    if (!outfile.is_open()) {
-      std::cerr << "Error opening file: " << output_filename << '\n';
-      write_output = false;
-    } else {
-      std::cout << "Writing to file: " << output_filename << '\n';
-      outfile << "log_r[cm],log_m[g],log_P[dyne/cm^2]\n";
-    }
-  }
+  // Initial mass (same as before)
+  const double fraction = 4.0 / 3.0;
+  const double log_m0 =
+      std::log10(fraction) + std::log10(M_PI) + 3.0 * std::log10(r_start) + std::log10(rho_c);
 
-  // Initial conditions
-  double fraction = 4.0 / 3.0;
-  double log_r_start = log10(r_start);
-  double log_r_end = log10(r_end);
-  double log_m0 = log10(fraction) + log10(M_PI) + 3.0 * log10(r_start) + log10(rho_c);
-
-  // For initial pressure, we need to find P(ρ_c)
-  // Since we only have the inverse spline ρ(P), we need to search for the correct P
-  // This is a limitation - in practice you'd want both forward and inverse splines
-  // For now, estimate using a reasonable range and binary search
-
-  // Simple search to find pressure that gives approximately the right density
+  // Find log_p0 by bisection using inverse spline (same logic as before)
   auto rho_of_logP = [&](double lp) { return gsl_spline_eval(spline_inv, lp, acc_inv); };
-
-  double a = min_logP;
-  double b = max_logP;
-  double target = std::log10(rho_c);
+  double a = min_logP, b = max_logP, target = std::log10(rho_c);
   for (int it = 0; it < 60; ++it) {
     double m = 0.5 * (a + b);
-    if (rho_of_logP(m) < target) {
+    if (rho_of_logP(m) < target)
       a = m;
-    } else {
+    else
       b = m;
-    }
   }
-  double log_p0 = 0.5 * (a + b);
-  if (std::abs(log_p0 - max_logP) < 1e-6) {
-    std::cerr << "[Pegged] rho_c=" << rho_c << " uses logP0=max_logP; EOS ceiling reached.\n";
-  }
+  const double log_p0 = 0.5 * (a + b);
 
-  std::vector<double> state = {log_m0, log_p0};
-  std::vector<double> state_prev = state;
+  // Adapter + integrate
+  SplineEOSView view{spline_inv, acc_inv, min_logP, max_logP, spline_eps, acc_eps};
 
-  std::cout << "Initial conditions (spline-based):" << '\n';
-  std::cout << "  log_r_start = " << log_r_start << '\n';
-  std::cout << "  log_m0 = " << log_m0 << '\n';
-  std::cout << "  log_p0 = " << log_p0 << '\n';
-  std::cout << "  rho_c = " << rho_c << " g/cm³" << '\n';
-  std::cout << "  EOS range: [" << min_logP << ", " << max_logP << "]" << '\n';
+  IntegrateOpts opts;
+  opts.r_start = r_start;
+  opts.r_end = r_end;
+  opts.base_dlogr = base_dlogr;
+  opts.use_adaptive_stepping = use_adaptive_stepping;
+  opts.pressure_threshold = pressure_threshold;
+  if (!output_filename.empty())
+    opts.output_filename = output_filename;
 
-  int idx = 0;
-  double log_r = log_r_start;
-  double log_r_prev = log_r_start;
-  double current_dlogr = base_dlogr;
-  double dlogr_min = 0.2 * base_dlogr;
-  double dlogr_max = 5.0 * base_dlogr;
-
-  double logP_stop = std::log10(pressure_threshold);
-
-  while (log_r < log_r_end) {
-    // Integration step using spline-based derivatives
-    state = rk4_step(log_r, current_dlogr, state,
-                     [spline_inv, acc_inv, spline_eps, acc_eps, min_logP,
-                      max_logP](double r, const std::vector<double> &s) {
-                       return tolman_oppenheimer_volkoff_derivatives_spline_eps(
-                           r, s, spline_inv, acc_inv, spline_eps, acc_eps, min_logP, max_logP);
-                     });
-
-    log_r += current_dlogr;
-
-    double g_prev = state_prev[1] - logP_stop;
-    double g_curr = state[1] - logP_stop;
-    if (g_prev > 0.0 && g_curr <= 0.0) {
-      // Linear interpolation to the crossing
-      double t = g_prev / (g_prev - g_curr);
-      double log_r_surf = log_r_prev + t * (log_r - log_r_prev);
-
-      double log_m_surf = state_prev[0] + t * (state[0] - state_prev[0]);
-
-      if (write_output) {
-        outfile << log_r_surf << "," << log_m_surf << "," << logP_stop << "\n";
-        outfile.close();
-      }
-      return {idx + 1, log_m_surf, log_r_surf, true};
-    }
-
-    // Output to file if requested
-    if (write_output) {
-      outfile << log_r << "," << state[0] << "," << state[1] << "\n";
-    }
-
-    // EOS validity check
-    if (state[1] < min_logP || state[1] > max_logP) {
-      std::cout << "Pressure outside EOS range at log_r: " << log_r << " (log_P = " << state[1]
-                << ")" << '\n';
-      break;
-    }
-
-    // Numerical stability check
-    if (!std::isfinite(state[0]) || !std::isfinite(state[1])) {
-      std::cout << "Non-finite values at log_r: " << log_r << '\n';
-      break;
-    }
-
-    // Progress reporting
-    if (idx % 1000 == 0) {
-      std::cout << "log_r: " << log_r << ", log_m: " << state[0] << ", log_P: " << state[1]
-                << ", step: " << current_dlogr << '\n';
-    }
-
-    // Adaptive step size control
-    if (use_adaptive_stepping && idx > 0) {
-      // Adjust step size based on pressure gradient
-      double slope = std::abs((state[1] - state_prev[1]) / (log_r - log_r_prev));
-      // larger slope -> smaller step; smaller slope -> larger step
-      double scale = (slope > 1.0 ? 0.5 : (slope < 0.1 ? 2.0 : 1.0));
-      // Clamp step size to reasonable bounds
-      current_dlogr = std::clamp(base_dlogr * scale, dlogr_min, dlogr_max);
-    }
-
-    if (log_r + current_dlogr > log_r_end) {
-      current_dlogr = log_r_end - log_r;
-    }
-
-    state_prev = state;
-    log_r_prev = log_r;
-    ++idx;
-  }
-
-  std::cerr << "[NoSurface] rho_c=" << rho_c << " last log_r=" << log_r
-            << " last log_P=" << state[1] << " logP_stop=" << logP_stop << "\n";
-
-  if (write_output) {
-    outfile.close();
-  }
-  return {idx, state[0], log_r, false};
+  return integrate_structure(view, GravityModel::RelativisticTOV, MassSource::UseEpsilonForMass,
+                             rho_c, log_m0, log_p0, opts);
 }

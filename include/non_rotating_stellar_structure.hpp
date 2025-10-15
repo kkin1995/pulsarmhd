@@ -64,12 +64,12 @@
 /**
  * @brief Gravitational constant in CGS units.
  */
-const double G = 6.67430e-8; // gravitational constant in CGS
+inline constexpr double G = 6.67430e-8; // gravitational constant in CGS
 
 /**
  * @brief Speed of light in CGS units.
  */
-const double c = 2.99792458e10; // speed of light in CGS units
+inline constexpr double c = 2.99792458e10; // speed of light in CGS units
 
 /**
  * @brief Polytropic EOS types are now handled by the PolytropicEOS class.
@@ -193,10 +193,9 @@ struct TovResult {
  * @see PolytropicEOS::getEOSParameters() for EOS parameter calculation
  * @see get_filename() for output file naming convention
  */
-std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType eos_type,
-                                                               double rho_c, double r_start,
-                                                               double r_end, double dlogr,
-                                                               double mu_e = 2.0);
+[[nodiscard]] std::tuple<int, double, double>
+non_rotating_stellar_structure(PolytropicGasType eos_type, double rho_c, double r_start,
+                               double r_end, double dlogr, double mu_e = 2.0);
 
 /**
  * @brief Solves stellar structure equations for non-rotating compact objects using spline-based
@@ -324,7 +323,7 @@ std::tuple<int, double, double> non_rotating_stellar_structure(PolytropicGasType
  * @see tolman_oppenheimer_volkoff_derivatives() for TOV equation details
  * @see GSL documentation for spline initialization and management
  */
-TovResult non_rotating_stellar_structure_spline(
+[[nodiscard]] TovResult non_rotating_stellar_structure_spline(
     const gsl_spline *spline_inv, gsl_interp_accel *acc_inv, double min_logP, double max_logP,
     double rho_c, double r_start, double r_end, double base_dlogr, bool use_adaptive_stepping,
     double pressure_threshold, const std::string &output_filename,
@@ -392,8 +391,8 @@ TovResult non_rotating_stellar_structure_spline(
  *
  * @see tolman_oppenheimer_volkoff_derivatives() for the relativistic version
  */
-std::vector<double> newtonian(double log_r, const std::vector<double> &state, double k,
-                              double gamma);
+[[nodiscard]] std::vector<double> newtonian(double log_r, const std::vector<double> &state,
+                                            double k, double gamma);
 
 /**
  * @brief Computes the mass and pressure derivatives using the TOV (Tolman-Oppenheimer-Volkoff)
@@ -463,9 +462,9 @@ std::vector<double> newtonian(double log_r, const std::vector<double> &state, do
  *
  * @see newtonian() for the non-relativistic version
  */
-std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r,
-                                                           const std::vector<double> &state,
-                                                           double k, double gamma);
+[[nodiscard]] std::vector<double>
+tolman_oppenheimer_volkoff_derivatives(double log_r, const std::vector<double> &state, double k,
+                                       double gamma);
 
 /**
  * @brief Computes the mass and pressure derivatives using TOV equations with spline-based EOS.
@@ -552,13 +551,11 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives(double log_r,
  * @see non_rotating_stellar_structure_spline() for full integration example
  * @see GSL documentation for spline usage and error handling
  */
-std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(double log_r,
-                                                                  const std::vector<double> &state,
-                                                                  const gsl_spline *spline_inv,
-                                                                  gsl_interp_accel *acc_inv,
-                                                                  double min_logP, double max_logP);
+[[nodiscard]] std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline(
+    double log_r, const std::vector<double> &state, const gsl_spline *spline_inv,
+    gsl_interp_accel *acc_inv, double min_logP, double max_logP);
 
-std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
+[[nodiscard]] std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
     double log_r, const std::vector<double> &state, const gsl_spline *rho_of_logP,
     gsl_interp_accel *acc_rho, const gsl_spline *eps_of_logP, gsl_interp_accel *acc_eps,
     double min_logP, double max_logP);
@@ -668,6 +665,6 @@ std::vector<double> tolman_oppenheimer_volkoff_derivatives_spline_eps(
  * @see PolytropicEOS::getEOSParameters() for valid EOS names
  * @see non_rotating_stellar_structure() for usage context
  */
-std::string get_filename(const std::string &name, double rho_c);
+[[nodiscard]] std::string get_filename(const std::string &name, double rho_c);
 
 #endif // NON_ROTATING_STELLAR_STRUCTURE_HPP
