@@ -20,15 +20,18 @@ struct SplineEOSView : public EOSView {
       : rho_of_logP_(inv), acc_rho_(acc_inv), eps_of_logP_(eps), acc_eps_(acc_eps),
         min_logP_(minLP), max_logP_(maxLP) {}
 
-  double clamp_log10P(double lp) const override { return std::clamp(lp, min_logP_, max_logP_); }
+  [[nodiscard]] double clamp_log10P(double lp) const override {
+    return std::clamp(lp, min_logP_, max_logP_);
+  }
 
-  double log10_rho_from_log10P(double log10P) const override {
+  [[nodiscard]] double log10_rho_from_log10P(double log10P) const override {
     return gsl_spline_eval(rho_of_logP_, clamp_log10P(log10P), acc_rho_);
   }
 
-  std::optional<double> epsilon_from_log10P(double log10P) const override {
-    if (!eps_of_logP_)
+  [[nodiscard]] std::optional<double> epsilon_from_log10P(double log10P) const override {
+    if (!eps_of_logP_) {
       return std::nullopt;
+    }
     return gsl_spline_eval(eps_of_logP_, clamp_log10P(log10P), acc_eps_);
   }
 };

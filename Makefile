@@ -1,6 +1,6 @@
 # Compiler and flags
 CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -O3 -march=native -fopenmp
+CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -O3 -march=native -fopenmp
 DEBUG_FLAGS := -g -DDEBUG
 
 # Promote warnings to errors in CI only (keeps local builds flexible)
