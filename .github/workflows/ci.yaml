@@ -1,0 +1,33 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CI: "1"                   # used by Makefile to add -Werror in CI only
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ make clang-tidy cppcheck bear
+
+      - name: Build (default flags)
+        run: make
+
+      - name: Strict build (report only)
+        run: make strict
+
+      - name: Generate compile_commands.json
+        run: make compdb
+
+      - name: Clang-Tidy (src only; non-fatal)
+        run: make tidy
+
+      - name: Cppcheck (non-fatal)
+        run: cppcheck --project=compile_commands.json --enable=warning,performance,portability --inline-suppr || true
