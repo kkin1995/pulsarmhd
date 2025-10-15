@@ -1,3 +1,6 @@
+![CI](https://github.com/kkin1995/pulsarmhd/actions/workflows/ci.yaml/badge.svg)
+
+
 # PulsarMHD
 
 A comprehensive C++ and Python framework for studying compact objects using both Newtonian and General Relativistic approaches. This project implements state-of-the-art numerical methods for modeling stellar structure with emphasis on high-density regimes, comprehensive equation of state support, and advanced data analysis capabilities.
