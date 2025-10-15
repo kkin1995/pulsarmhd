@@ -8,15 +8,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      CI: "1"                   # used by Makefile to add -Werror in CI only
+      CI: "1"  # Makefile uses this to add -Werror in CI only
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache APT
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt
+            /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/ci.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
 
       - name: Toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ make clang-tidy cppcheck bear \
-                            libgsl-dev libomp-dev
+          sudo apt-get install -y --no-install-recommends \
+            g++ make clang-tidy cppcheck bear libgsl-dev libomp-dev
 
       - name: Build (default flags)
         run: make
@@ -32,3 +42,26 @@ jobs:
 
       - name: Cppcheck (non-fatal)
         run: cppcheck --project=compile_commands.json --enable=warning,performance,portability --inline-suppr || true
+
+  asan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache APT
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt
+            /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/ci.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      - name: Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ make libgsl-dev
+
+      - name: ASan build
+        run: make asan
