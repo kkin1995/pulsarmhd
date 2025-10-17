@@ -64,32 +64,33 @@ test: dirs $(TEST_BIN)
 # Install Python testing dependencies
 install-python-deps:
 	@echo "Installing Python testing dependencies..."
-	poetry install --with test
+	uv lock
+	uv sync --group test
 
 # Run all Python tests
 test-python: install-python-deps
 	@echo "Running Python tests..."
-	cd $(PYTHON_TEST_DIR) && python -m pytest . -v --cov=$(SCRIPTS_DIR) --cov-report=term-missing --cov-report=html:../coverage_html
+	. .venv/bin/activate && cd $(PYTHON_TEST_DIR) && python -m pytest . -v --cov=$(SCRIPTS_DIR) --cov-report=term-missing --cov-report=html:../coverage_html
 
 # Run Python unit tests only
 test-python-unit: install-python-deps
 	@echo "Running Python unit tests..."
-	cd $(PYTHON_TEST_DIR) && python -m pytest unit/ -v -m unit --cov=$(SCRIPTS_DIR)/stellar_plotter.py --cov-report=term-missing
+	. .venv/bin/activate && cd $(PYTHON_TEST_DIR) && python -m pytest unit/ -v -m unit --cov=$(SCRIPTS_DIR)/stellar_plotter.py --cov-report=term-missing
 
 # Run Python integration tests only
 test-python-integration: install-python-deps
 	@echo "Running Python integration tests..."
-	cd $(PYTHON_TEST_DIR) && python -m pytest integration/ -v -m integration --cov=$(SCRIPTS_DIR) --cov-report=term-missing
+	. .venv/bin/activate && cd $(PYTHON_TEST_DIR) && python -m pytest integration/ -v -m integration --cov=$(SCRIPTS_DIR) --cov-report=term-missing
 
 # Run Python performance tests only
 test-python-performance: install-python-deps
 	@echo "Running Python performance tests..."
-	cd $(PYTHON_TEST_DIR) && python -m pytest performance/ -v -m performance --benchmark-only
+	. .venv/bin/activate && cd $(PYTHON_TEST_DIR) && python -m pytest performance/ -v -m performance --benchmark-only
 
 # Run Python visual regression tests only
 test-python-visual: install-python-deps
 	@echo "Running Python visual regression tests..."
-	cd $(PYTHON_TEST_DIR) && python -m pytest visual/ -v -m visual --mpl
+	. .venv/bin/activate && cd $(PYTHON_TEST_DIR) && python -m pytest visual/ -v -m visual --mpl
 
 # Run all tests (C++ and Python)
 test-all: test test-python
@@ -103,7 +104,7 @@ test-integration: test test-python
 # Generate Python coverage report
 coverage-python: install-python-deps
 	@echo "Generating Python coverage report..."
-	cd $(PYTHON_TEST_DIR) && python -m pytest . --cov=$(SCRIPTS_DIR) --cov-report=html:../coverage_html --cov-report=term-missing
+	. .venv/bin/activate && cd $(PYTHON_TEST_DIR) && python -m pytest . --cov=$(SCRIPTS_DIR) --cov-report=html:../coverage_html --cov-report=term-missing
 	@echo "Coverage report generated in tests/coverage_html/"
 
 # Create all required directories
