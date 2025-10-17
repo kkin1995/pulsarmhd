@@ -37,18 +37,27 @@ inline std::vector<double> tov_derivatives(double log_r, const std::vector<doubl
   } else {
     // Relativistic TOV:
     // mass equation: choose ρ or ε (matches your two paths)
-    const double dm_dr = (mass_src == MassSource::UseEpsilonForMass)
-                             ? (4.0 * M_PI * r * r * (eps / (c * c)))
-                             : (4.0 * M_PI * r * r * rho);
+    dlogm_dlogr = (mass_src == MassSource::UseEpsilonForMass)
+                      ? (((4.0 * M_PI * r * r * r) / m_safe) * (eps / (c * c)))
+                      : (4.0 * M_PI * r * r * r * rho) / m_safe;
 
-    dlogm_dlogr = (r / m_safe) * dm_dr;
+    if (mass_src == MassSource::UseRhoForMass) {
+      double first_factor = (-(G * m_safe * rho) / (P * r));
+      double second_factor = (1.0 + P / (rho * c * c));
+      double third_factor = 1.0 + ((4.0 * M_PI * P * r * r * r) / (m_safe * c * c));
+      double fourth_factor = 1.0 / (1.0 - ((2.0 * G * m_safe) / (r * c * c)));
 
-    double first_factor = (-(G * m_safe * rho) / (P * r));
-    double second_factor = (1.0 + P / (rho * c * c));
-    double third_factor = 1.0 + ((4.0 * M_PI * P * r * r * r) / (m_safe * c * c));
-    double fourth_factor = 1.0 / (1.0 - ((2.0 * G * m_safe) / (r * c * c)));
+      dlogP_dlogr = (first_factor * second_factor * third_factor * fourth_factor);
 
-    dlogP_dlogr = (first_factor * second_factor * third_factor * fourth_factor);
+    } else if (mass_src == MassSource::UseEpsilonForMass) {
+
+      double first_factor = -G / (c * c);
+      double second_factor =
+          (((eps + P) / P) * (m_safe + ((4.0 * M_PI * r * r * r * P) / (c * c)))) /
+          (r - ((2 * G * m_safe) / (c * c)));
+
+      dlogP_dlogr = first_factor * second_factor;
+    }
   }
 
   return {dlogm_dlogr, dlogP_dlogr};
