@@ -2,6 +2,7 @@
 #include "rk4.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <gsl/gsl_errno.h>
@@ -168,10 +169,13 @@ bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
     return false;
   }
 
-  // if epsilon present, enforce same length as log_P (truncate if needed)
+  // Require epsilon to match log_P length; if not, disable epsilon entirely.
   if (!epsilon.empty() && epsilon.size() != log_P.size()) {
-    epsilon.resize(std::min(epsilon.size(), log_P.size()));
+    std::cerr << "[EoS] epsilon column length (" << epsilon.size() << ") != log_P length ("
+              << log_P.size() << "); disabling epsilon (fallback to rho*c^2).\n";
+    epsilon.clear();
   }
+
   return true;
 }
 
@@ -212,7 +216,7 @@ int main() {
   // Load EOS data
   std::string eos_filename =
       "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/"
-      "sahu_basu_datta_bbp_magnetic_bps_b_0e_00.csv";
+      "sahu_basu_datta_bbp_magnetic_bps_b_1e-01.csv";
 
   std::string out_file = "data/tov_solution_sbd_bbp_magnetic_bps_";
 
@@ -337,6 +341,9 @@ int main() {
   gsl_spline *spline_inv = gsl_spline_alloc(gsl_interp_steffen, log_P.size());
   if (gsl_spline_init(spline_inv, log_P.data(), log_rho.data(), log_P.size()) != GSL_SUCCESS) {
     std::cerr << "Failed to init inverse spline log_rho(log_P)\n";
+    // free before exit
+    gsl_spline_free(spline_inv);
+    gsl_interp_accel_free(acc_inv);
     return 1;
   }
 
@@ -350,7 +357,18 @@ int main() {
   // Set up GSL splines for EOS interpolation
   gsl_interp_accel *acc_eps = nullptr;
   gsl_spline *spline_eps = nullptr;
-  if (!epsilon.empty() && epsilon.size() == log_P.size()) {
+  // Validate epsilon: must be present, sized like log_P, and all finite
+  auto has_bad_eps = [&]() -> bool {
+    if (epsilon.empty() || epsilon.size() != log_P.size())
+      return true;
+    for (double e : epsilon) {
+      if (!std::isfinite(e))
+        return true;
+    }
+    return false;
+  }();
+
+  if (!has_bad_eps) {
     acc_eps = gsl_interp_accel_alloc();
     spline_eps = gsl_spline_alloc(gsl_interp_steffen, log_P.size());
     if (gsl_spline_init(spline_eps, log_P.data(), epsilon.data(), log_P.size()) != GSL_SUCCESS) {
@@ -360,12 +378,20 @@ int main() {
       gsl_interp_accel_free(acc_eps);
       acc_eps = nullptr;
     }
+  } else {
+    if (!epsilon.empty()) {
+      std::cerr << "epsilon column has non-finite values or mismatched size; "
+                   "using eps ≈ rho*c^2 fallback.\n";
+    }
+    epsilon.clear(); // signal "no epsilon" to downstream code
   }
 
   // --- choose surface and compute P_stop using inverse spline
   const double rho_surface = 1e6;
-  const double goal_log_rho =
-      std::clamp(std::log10(rho_surface), log_rho.front() + 1e-9, log_rho.back() - 1e-9);
+  // clamp using actual min/max of log_rho (safer than relying on front/back)
+  const auto [lr_min_it2, lr_max_it2] = std::minmax_element(log_rho.begin(), log_rho.end());
+  const double lr_min2 = *lr_min_it2, lr_max2 = *lr_max_it2;
+  const double goal_log_rho = std::clamp(std::log10(rho_surface), lr_min2 + 1e-9, lr_max2 - 1e-9);
   auto rho_of_logP = [&](double lp) { return gsl_spline_eval(spline_inv, lp, acc_inv); };
   double a = min_logP, b = max_logP;
   for (int it = 0; it < 80; ++it) {
@@ -377,7 +403,8 @@ int main() {
 
   // Optional sanity print:
   std::cout << "Surface target: log10(rho)=" << goal_log_rho << " -> log10(P_stop)=" << logP_stop
-            << " (rho_at_stop=" << rho_of_logP(logP_stop) << ")\n";
+            << " (P_stop=" << P_stop << " dyne/cm^2"
+            << ", rho_at_stop=" << rho_of_logP(logP_stop) << ")\n";
 
   // Generate mass-radius relation by scanning central densities
   std::cout << "\n=== GENERATING MASS-RADIUS RELATION ===" << '\n';
@@ -401,8 +428,8 @@ int main() {
     // Convert results to physical units
     double mass_grams = std::pow(10.0, res.log10_m_surface);
     double radius_cm = std::pow(10.0, res.log10_r_surface);
-    double mass_solar = mass_grams / 1.989e33; // Convert to solar masses
-    double radius_km = radius_cm / 1e5;        // Convert to kilometers
+    double mass_solar = mass_grams / kMsun_g; // Convert to solar masses
+    double radius_km = radius_cm / kCmPerKm;  // Convert to kilometers
 
     // Report results
     std::cout << "Integration completed in " << res.steps << " steps" << '\n';
