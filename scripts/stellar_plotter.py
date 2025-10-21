@@ -19,6 +19,7 @@ import re
 import math
 import logging
 import argparse
+from scipy.interpolate import interp1d
 # import yaml  # Removed for streamlined CLI
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -1369,6 +1370,306 @@ class StellarPlotter:
 
         return output_path
 
+    # ========================================================================
+    # MAGNETIC FIELD STRATIFIED PLOTTING
+    # ========================================================================
+
+    def _list_magnetic_field_dirs(self, root_dir: str) -> List[Tuple[float, str]]:
+        """
+        Scan for b_* subdirectories and extract magnetic field values.
+
+        Args:
+            root_dir: Root directory to search for b_* subdirectories
+
+        Returns:
+            List of (b_value, directory_path) tuples, sorted by b_value
+        """
+        pairs = []
+        pattern = os.path.join(root_dir, "b_*")
+
+        for d in sorted(glob.glob(pattern)):
+            base = os.path.basename(d)
+            match = re.match(r"b_([0-9.eE+-]+)$", base)
+            if not match:
+                continue
+            try:
+                b = float(match.group(1))
+                pairs.append((b, d))
+            except ValueError:
+                self.logger.warning(f"Could not parse b value from directory: {base}")
+                continue
+
+        return sorted(pairs, key=lambda x: x[0])
+
+    def _read_surface_values(self, csv_path: str, r_end_cm: float) -> Optional[Tuple[float, float]]:
+        """
+        Extract surface mass and radius from a TOV solution CSV file.
+
+        Args:
+            csv_path: Path to CSV file
+            r_end_cm: Computational boundary radius in cm (for artifact detection)
+
+        Returns:
+            Tuple of (M_solar, R_km) or None if invalid
+        """
+        SOLAR_MASS_G = 1.989e33
+        CM_TO_KM = 1e-5
+
+        try:
+            df = pd.read_csv(csv_path)
+
+            # Check required columns
+            needed = {'log_m[g]', 'log_r[cm]'}
+            if not needed.issubset(df.columns):
+                return None
+
+            # Optional pressure monotonicity check
+            if 'log_P[dyne/cm^2]' in df.columns and len(df) > 3:
+                lp = df['log_P[dyne/cm^2]'].to_numpy()
+                # Pressure should decrease monotonically
+                if not np.all(np.diff(lp) <= 1e-6):
+                    return None
+                # Last pressure should be close to minimum
+                if not np.isclose(lp[-1], lp.min(), atol=5e-4):
+                    return None
+
+            # Extract surface values
+            m_sol = 10.0**df['log_m[g]'].iloc[-1] / SOLAR_MASS_G
+            r_km = 10.0**df['log_r[cm]'].iloc[-1] * CM_TO_KM
+
+            # Skip models that hit computational boundary
+            if r_end_cm is not None:
+                r_end_km = r_end_cm * CM_TO_KM
+                if (r_km > 0.98*r_end_km) and np.isclose(r_km, r_end_km, rtol=1e-3, atol=0.5):
+                    return None
+
+            return m_sol, r_km
+
+        except Exception as e:
+            self.logger.debug(f"Failed to read {csv_path}: {e}")
+            return None
+
+    def _collect_mr_family(self, b_dir: str, r_end_cm: float, file_list: Optional[List[str]] = None) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Collect all valid M-R pairs from a magnetic field directory.
+
+        Args:
+            b_dir: Directory containing CSV files for a specific b value
+            r_end_cm: Computational boundary radius in cm
+            file_list: Optional list of specific files to use (default: None = use all CSV files)
+
+        Returns:
+            Tuple of (R_km_sorted, M_solar_sorted) arrays
+        """
+        all_pairs = []
+
+        # Use provided file list if available, otherwise glob all CSV files
+        if file_list is not None:
+            csv_files = file_list
+        else:
+            csv_files = glob.glob(os.path.join(b_dir, "*.csv"))
+
+        for csv in csv_files:
+            mr = self._read_surface_values(csv, r_end_cm=r_end_cm)
+            if mr is not None:
+                all_pairs.append(mr)
+
+        if not all_pairs:
+            return np.array([]), np.array([])
+
+        M, R = zip(*all_pairs)
+        M = np.array(M)
+        R = np.array(R)
+
+        # Sort by radius for smooth plotting
+        idx = np.argsort(R)
+        return R[idx], M[idx]
+
+    def plot_mass_radius_by_field(
+        self,
+        data_dir: str,
+        r_end_cm: float = 1.0e8,
+        output_file: str = "mr_by_b.png",
+        eos_types: Optional[List[str]] = None
+    ) -> str:
+        """
+        Create mass-radius plot stratified by magnetic field strength.
+
+        Generates a two-panel figure:
+        - Top panel: M-R curves for different b values
+        - Bottom panel: Residuals (ΔM) relative to reference field
+
+        Args:
+            data_dir: Root directory containing b_* subdirectories
+            r_end_cm: Computational boundary radius in cm (default: 1e8 cm = 1000 km)
+            output_file: Output filename (default: mr_by_b.png)
+            eos_types: Optional list of EOS types to filter (default: None = all files)
+
+        Returns:
+            Path to saved plot file
+        """
+        # Discover b_* directories
+        b_dirs = self._list_magnetic_field_dirs(data_dir)
+        if not b_dirs:
+            self.logger.error(f"No b_* directories found in {data_dir}")
+            return None
+
+        # Apply EOS type filtering if requested
+        filtered_files_by_b = {}
+        if eos_types is not None and len(eos_types) > 0:
+            # Use EOSDataProcessor for fuzzy matching across all b_* directories
+            processor = EOSDataProcessor(self.config)
+
+            # Discover files recursively and apply fuzzy matching
+            discovered_groups = processor.discover_files(eos_types)
+
+            # Group discovered files by their b_* directory
+            for canonical_eos, file_list in discovered_groups.items():
+                for filepath in file_list:
+                    # Check which b_* directory this file belongs to
+                    for b, b_path in b_dirs:
+                        if filepath.startswith(b_path):
+                            if b not in filtered_files_by_b:
+                                filtered_files_by_b[b] = []
+                            filtered_files_by_b[b].append(filepath)
+                            break
+
+            if not filtered_files_by_b:
+                self.logger.warning(f"No files matching EOS types {eos_types} found in any b_* directory")
+                return None
+
+            self.logger.info(f"EOS filtering: selected {sum(len(files) for files in filtered_files_by_b.values())} files across {len(filtered_files_by_b)} field strengths")
+
+        # Determine radius cap for filtering (matching plot_mass_radius_relation behavior)
+        if getattr(self.config, "validation", None) and hasattr(self.config.validation, "max_radius_km"):
+            radius_cap = float(self.config.validation.max_radius_km)
+            self.logger.info(f"Applying radius filter: max_radius = {radius_cap} km")
+        else:
+            radius_cap = float("inf")
+
+        def apply_radius_filter(radii: np.ndarray, masses: np.ndarray, context: str, log_drops: bool = True) -> Tuple[np.ndarray, np.ndarray, int]:
+            """Apply radius cap to radius/mass points, optionally logging dropped counts."""
+            if not math.isfinite(radius_cap) or radii.size == 0:
+                return radii, masses, 0
+            mask = radii <= radius_cap
+            kept = int(mask.sum())
+            dropped = int(mask.size - kept)
+            if dropped > 0 and log_drops:
+                self.logger.info(f"{context}: dropped {dropped} points with R > {radius_cap} km")
+            return radii[mask], masses[mask], dropped
+
+        # Create two-panel figure with gridspec
+        fig = plt.figure(figsize=(7.5, 7.0), constrained_layout=True)
+        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1])
+        ax = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax)
+
+        ref_b = None
+        ref_curve = None
+        summary = []
+
+        # Plot M-R curves for each b value
+        for b, path in b_dirs:
+            # Use filtered file list if available, otherwise use all files
+            if filtered_files_by_b:
+                if b in filtered_files_by_b:
+                    file_list = sorted(filtered_files_by_b[b])
+                else:
+                    # Skip this b value if no matching files after EOS filtering
+                    continue
+            else:
+                file_list = None  # Will use all CSV files in the directory
+
+            files = sorted(glob.glob(os.path.join(path, "*.csv"))) if file_list is None else file_list
+            R_km, M_solar = self._collect_mr_family(path, r_end_cm=r_end_cm, file_list=file_list)
+            R_km, M_solar, _ = apply_radius_filter(R_km, M_solar, path)
+            used = len(R_km)
+
+            summary.append((
+                b, len(files), used,
+                (float(np.min(R_km)) if used else np.nan,
+                 float(np.max(R_km)) if used else np.nan)
+            ))
+
+            if used == 0:
+                self.logger.warning(f"{path}: {len(files)} files, 0 usable (likely r_end/surface filter)")
+                continue
+
+            label = f"b = {b:g}"
+            ax.scatter(R_km, M_solar, s=9.0, alpha=0.9, zorder=2, label=label)
+
+            if self.config.style.grid:
+                ax.grid(True, alpha=self.config.style.grid_alpha, zorder=0)
+
+            # Pick reference as smallest b
+            if ref_curve is None or (ref_b is not None and b < ref_b):
+                ref_b, ref_curve = b, (R_km, M_solar)
+
+        # Compute residuals vs reference
+        if ref_curve is not None:
+            Rref, Mref = ref_curve
+            fMref = interp1d(Rref, Mref, bounds_error=False, fill_value=np.nan)
+
+            for b, path in b_dirs:
+                # Use filtered file list if available
+                if filtered_files_by_b:
+                    if b not in filtered_files_by_b:
+                        continue
+                    file_list = sorted(filtered_files_by_b[b])
+                else:
+                    file_list = None
+
+                R_km, M_solar = self._collect_mr_family(path, r_end_cm=r_end_cm, file_list=file_list)
+                R_km, M_solar, _ = apply_radius_filter(R_km, M_solar, path, log_drops=False)
+                if R_km.size == 0 or b == ref_b:
+                    continue
+
+                # Compute ΔM at overlapping radii
+                Rmin = max(np.min(R_km), np.min(Rref))
+                Rmax = min(np.max(R_km), np.max(Rref))
+                mask = (R_km >= Rmin) & (R_km <= Rmax)
+                dM = M_solar[mask] - fMref(R_km[mask])
+                ax2.plot(R_km[mask], dM, lw=1.2, label=f"ΔM (b={b:g} − {ref_b:g})")
+
+        # Format top panel
+        if self.config.style.show_title:
+            ax.set_title(r"Mass–Radius curves colored by $b = B/B_{\rm Q}$")
+        ax.set_xlabel("Radius R (km)")
+        ax.set_ylabel(r"Gravitational Mass M ($M_\odot$)")
+        if self.config.style.grid:
+            ax.grid(True, alpha=self.config.style.grid_alpha)
+        if self.config.style.show_legend:
+            ax.legend(frameon=True, fontsize=9)
+
+        # Format bottom panel
+        ax2.axhline(0, ls=":", lw=1)
+        ax2.set_xlabel("Radius R (km)")
+        ax2.set_ylabel(r"ΔM ($M_\odot$)")
+        if self.config.style.grid:
+            ax2.grid(True, alpha=self.config.style.grid_alpha)
+        if math.isfinite(radius_cap):
+            ax.set_xlim(0.0, radius_cap)
+            ax2.set_xlim(0.0, radius_cap)
+
+        # Save plot
+        output_path = os.path.join(self.config.output_directory, output_file)
+        plt.savefig(output_path, dpi=self.config.style.dpi)
+        plt.close(fig)
+
+        self.logger.info(f"Saved magnetic field stratified M-R plot: {output_path}")
+
+        # Log summary statistics
+        self.logger.info("\nPer-b summary (files, used, R-range [km]):")
+        for b, nfiles, used, Rrng in summary:
+            rmin, rmax = Rrng
+            self.logger.info(
+                f"  b={b:g}: files={nfiles:3d}, used={used:3d}, "
+                f"R∈[{'' if np.isnan(rmin) else f'{rmin:.1f}'}, "
+                f"{'' if np.isnan(rmax) else f'{rmax:.1f}'}]"
+            )
+
+        return output_path
+
 
 # ============================================================================
 # COMMAND LINE INTERFACE
@@ -1431,6 +1732,15 @@ RADIUS FILTERING:
     both_parser.add_argument('--eos-types', nargs='*', default=None,
                             help='EOS types to include (default: auto-discover all)')
 
+    # Magnetic field stratified M-R plots
+    mrb_parser = subparsers.add_parser('mr-by-b', help='Mass-radius plots stratified by magnetic field strength')
+    mrb_parser.add_argument('--eos-types', nargs='*', default=None,
+                           help='EOS types to include (default: auto-discover all)')
+    mrb_parser.add_argument('--r-end-cm', type=float, default=1.0e8,
+                           help='Boundary cutoff in cm (default: 1e8 cm = 1000 km)')
+    mrb_parser.add_argument('--output', default='mr_by_b.png',
+                           help='Output filename (default: mr_by_b.png)')
+
     # Legacy aliases (hidden from help)
     mr_legacy = subparsers.add_parser('mass-radius', help=argparse.SUPPRESS)
     mr_legacy.add_argument('--eos-types', nargs='*', default=None)
@@ -1452,7 +1762,7 @@ RADIUS FILTERING:
     list_parser = subparsers.add_parser('list', help='List auto-discovery inventory')
 
     # Essential options only
-    for subparser in [mr_parser, md_parser, both_parser, mr_legacy, md_legacy, profile_parser, eos_parser, list_parser]:
+    for subparser in [mr_parser, md_parser, both_parser, mrb_parser, mr_legacy, md_legacy, profile_parser, eos_parser, list_parser]:
         subparser.add_argument('--theme', choices=['default', 'dark'], default='default',
                               help='Plot theme (default: default)')
         subparser.add_argument('--dpi', type=int, default=300, help='Output resolution (default: 300)')
@@ -1623,6 +1933,21 @@ def execute_plotting_command(args) -> None:
             else:
                 logger.error("Failed to create EOS comparison plot")
 
+        elif args.command == 'mr-by-b':
+            # Magnetic field stratified M-R plotting
+            data_dir = args.data_dir if args.data_dir else config.data_directory
+            eos_types = args.eos_types if hasattr(args, 'eos_types') else None
+            plot_path = plotter.plot_mass_radius_by_field(
+                data_dir=data_dir,
+                r_end_cm=args.r_end_cm,
+                output_file=args.output,
+                eos_types=eos_types
+            )
+            if plot_path:
+                logger.info(f"✓ Saved: {plot_path}")
+            else:
+                logger.error("Failed to create magnetic field stratified M-R plot")
+
         elif args.command == 'list':
             # Auto-discovery inventory using helper
             root = os.path.abspath(config.data_directory)
@@ -1647,7 +1972,7 @@ def main():
         execute_plotting_command(args)
     else:
         print("No command specified. Available commands:")
-        print("  mr | md | both | eos | profile | list")
+        print("  mr | md | both | mr-by-b | eos | profile | list")
         print("Try --help for usage details.")
 
 
