@@ -83,10 +83,10 @@ sahu_basu_datta_eos = pd.read_csv(
 )
 print(f"Number of NaN Values in Sahu Basu Datta: {sahu_basu_datta_eos.isna().sum(axis = 0)}")
 
-outfile = "data/sahu_basu_datta_bbp_magnetic_bps_b_0e-00.csv"
+outfile = "data/sahu_basu_datta_bbp_magnetic_bps_b_1e-05.csv"
 
 magnetic_bps_eos = pd.read_csv(
-    "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bps_single_b_b_0e_00.csv",
+    "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/bps_single_b_b_1e-05.csv",
     header=0
 )
 print(f"Number of NaN Values in Magnetic BPS: {magnetic_bps_eos.isna().sum(axis = 0)}")
