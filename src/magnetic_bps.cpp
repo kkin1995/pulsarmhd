@@ -33,9 +33,10 @@ std::vector<double> MagneticBPSEOS::generateBaryonDensities(double nB_min, doubl
                                                             int num_points) {
   std::vector<double> nB_list;
   // Logarithmic spacing for smoother transitions
-  for (int i = 0; i < num_points; i++) {
-    double nB_i = nB_min * pow(10, i * (log10(nB_max / nB_min) / (num_points - 1)));
-    nB_list.push_back(nB_i);
+  const double log_span = std::log10(nB_max / nB_min);
+  for (int i = 0; i < num_points; ++i) {
+    const double t = (num_points > 1) ? double(i) / double(num_points - 1) : 0.0;
+    nB_list.push_back(nB_min * std::pow(10.0, t * log_span));
   }
   return nB_list;
 }
@@ -140,8 +141,14 @@ void MagneticBPSEOS::writeEOSResults(const std::string &output_file,
   outfile << "log_n,log_rho,log_P\n";
 
   for (const auto &comp : results) {
-    outfile << std::log10(comp.baryon_density) << "," << std::log10(comp.total_mass_density) << ","
-            << std::log10(comp.total_pressure) << "\n";
+    if (!comp.converged || !(comp.total_pressure > 0.0))
+      continue;
+    const double ln = std::log10(comp.baryon_density);
+    const double lr = std::log10(comp.total_mass_density);
+    const double lp = std::log10(comp.total_pressure);
+    if (!std::isfinite(ln) || !std::isfinite(lr) || !std::isfinite(lp))
+      continue;
+    outfile << ln << "," << lr << "," << lp << "\n";
   }
   outfile.close();
 }
@@ -281,6 +288,7 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
           relative_error = (calculated_electron_density - electron_density) / electron_density;
 
           if (std::fabs(relative_error) < rel_tolerance) {
+            converged = true;
             break; // done
           }
 
@@ -291,7 +299,13 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
           }
         }
         if (!converged) {
-          continue; // try next nucleus
+          const bool width_small =
+              std::fabs(gamma_e_upper - gamma_e_lower) <= abs_tolerance * gamma_e;
+          if (std::fabs(relative_error) < rel_tolerance || width_small) {
+            converged = true;
+          } else {
+            continue; // try next nucleus
+          }
         }
       }
     }
