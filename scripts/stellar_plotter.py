@@ -1670,6 +1670,238 @@ class StellarPlotter:
 
         return output_path
 
+    def plot_delta_radius_vs_b(
+        self,
+        data_dir: str,
+        target_masses: List[float],
+        ref_b_tag: Optional[str] = None,
+        r_end_cm: float = 1.0e8,
+        output_file: str = "delta_radius_vs_b.png",
+        eos_types: Optional[List[str]] = None
+    ) -> str:
+        """
+        Compute and plot ΔR(b; M*) = R_b(M*) - R_ref(M*) at fixed masses.
+
+        Args:
+            data_dir: Root directory containing b_* subdirectories
+            target_masses: List of target masses in M_sun
+            ref_b_tag: Optional explicit reference family tag (e.g., 'b_0e00')
+            r_end_cm: Computational boundary radius in cm
+            output_file: Output filename
+            eos_types: Optional list of EOS types to filter
+
+        Returns:
+            Path to saved plot file
+        """
+        # Discover b_* directories
+        b_dirs = self._list_magnetic_field_dirs(data_dir)
+        if not b_dirs:
+            self.logger.error(f"No b_* directories found in {data_dir}")
+            return None
+
+        # Apply EOS type filtering if requested (reuse logic from plot_mass_radius_by_field)
+        filtered_files_by_b = {}
+        if eos_types is not None and len(eos_types) > 0:
+            processor = EOSDataProcessor(self.config)
+            discovered_groups = processor.discover_files(eos_types)
+
+            for canonical_eos, file_list in discovered_groups.items():
+                for filepath in file_list:
+                    for b, b_path in b_dirs:
+                        if filepath.startswith(b_path):
+                            if b not in filtered_files_by_b:
+                                filtered_files_by_b[b] = []
+                            filtered_files_by_b[b].append(filepath)
+                            break
+
+            if not filtered_files_by_b:
+                self.logger.warning(f"No files matching EOS types {eos_types} found in any b_* directory")
+                return None
+
+        # Apply radius filtering
+        if getattr(self.config, "validation", None) and hasattr(self.config.validation, "max_radius_km"):
+            radius_cap = float(self.config.validation.max_radius_km)
+        else:
+            radius_cap = float("inf")
+
+        # Collect MR data for each family
+        families = {}  # b_value -> {'M': array, 'R': array, 'tag': str, 'R_interp': callable}
+
+        for b, path in b_dirs:
+            # Use filtered file list if available
+            if filtered_files_by_b:
+                if b not in filtered_files_by_b:
+                    continue
+                file_list = sorted(filtered_files_by_b[b])
+            else:
+                file_list = None
+
+            # Collect MR points (reuse existing helper)
+            R_km, M_solar = self._collect_mr_family(path, r_end_cm=r_end_cm, file_list=file_list)
+
+            # Apply radius filter
+            if R_km.size > 0 and math.isfinite(radius_cap):
+                mask = R_km <= radius_cap
+                R_km, M_solar = R_km[mask], M_solar[mask]
+
+            if R_km.size < 2:
+                self.logger.warning(f"[warn] family {os.path.basename(path)} unusable for ΔR (insufficient stable points)")
+                continue
+
+            # Sort by mass and extract stable branch (monotonically increasing M)
+            idx = np.argsort(M_solar)
+            M_sorted, R_sorted = M_solar[idx], R_km[idx]
+
+            # Keep only strictly increasing mass (stable branch up to M_max)
+            keep_mask = np.concatenate([[True], np.diff(M_sorted) > 0])
+            M_stable = M_sorted[keep_mask]
+            R_stable = R_sorted[keep_mask]
+
+            if M_stable.size < 2:
+                self.logger.warning(f"[warn] family {os.path.basename(path)} unusable for ΔR (no stable monotone segment)")
+                continue
+
+            # Build R(M) interpolator
+            R_interp = interp1d(M_stable, R_stable, kind='linear', bounds_error=False, fill_value=np.nan)
+
+            tag = os.path.basename(path)
+            families[b] = {
+                'M': M_stable,
+                'R': R_stable,
+                'tag': tag,
+                'R_interp': R_interp,
+                'M_min': float(np.min(M_stable)),
+                'M_max': float(np.max(M_stable))
+            }
+
+        if len(families) < 2:
+            self.logger.error("Need at least 2 usable families for ΔR analysis")
+            return None
+
+        # Pick reference
+        ref_b = None
+        if ref_b_tag is not None:
+            # User specified explicit reference
+            for b, fam in families.items():
+                if fam['tag'] == ref_b_tag:
+                    ref_b = b
+                    break
+            if ref_b is None:
+                self.logger.error(f"Specified reference {ref_b_tag} not found in usable families")
+                return None
+        else:
+            # Auto-pick: b=0 if exists, else smallest b
+            b_zero_candidates = [b for b in families.keys() if abs(b) < 1e-12]
+            if b_zero_candidates:
+                ref_b = b_zero_candidates[0]
+            else:
+                ref_b = min(families.keys())
+                self.logger.warning(f"WARNING: using smallest b={ref_b:g} as reference (no b=0 present)")
+
+        ref_interp = families[ref_b]['R_interp']
+
+        # Compute mass overlap
+        M_min_overlap = max(fam['M_min'] for fam in families.values())
+        M_max_overlap = min(fam['M_max'] for fam in families.values())
+
+        if M_min_overlap >= M_max_overlap:
+            self.logger.error(f"No mass overlap between families: [{M_min_overlap:.2f}, {M_max_overlap:.2f}]")
+            return None
+
+        # Compute ΔR for each target mass
+        results = {}  # M_target -> list of (b, ΔR) tuples
+        summary = []
+
+        for M_target in target_masses:
+            if M_target < M_min_overlap or M_target > M_max_overlap:
+                self.logger.warning(f"Target mass {M_target:.2f} Msun not in overlap [{M_min_overlap:.2f}, {M_max_overlap:.2f}]; skipping")
+                continue
+
+            R_ref = ref_interp(M_target)
+            if np.isnan(R_ref):
+                self.logger.warning(f"Reference interpolation failed for M={M_target:.2f}; skipping")
+                continue
+
+            delta_R_list = []
+            for b, fam in families.items():
+                R_b = fam['R_interp'](M_target)
+                if np.isnan(R_b):
+                    continue
+                delta_R = R_b - R_ref
+                delta_R_list.append((b, delta_R))
+
+            if len(delta_R_list) < 2:
+                self.logger.warning(f"Insufficient data points for M={M_target:.2f}; skipping")
+                continue
+
+            results[M_target] = sorted(delta_R_list, key=lambda x: x[0])
+
+            # Summary statistics
+            delta_R_values = [dr for _, dr in delta_R_list]
+            summary.append({
+                'M': M_target,
+                'overlap': (M_min_overlap, M_max_overlap),
+                'N_families': len(delta_R_list),
+                'dR_min': min(delta_R_values),
+                'dR_max': max(delta_R_values)
+            })
+
+        if not results:
+            self.logger.error("No valid results to plot")
+            return None
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=self.config.style.figure_size)
+
+        for M_target in sorted(results.keys()):
+            b_values = [b for b, _ in results[M_target]]
+            dR_values = [dr for _, dr in results[M_target]]
+            ax.scatter(b_values, dR_values, s=50, label=f'M = {M_target:.2f} M$_\\odot$', alpha=0.8)
+
+        # Use symlog to handle b=0 (log scale can't plot zero)
+        # Linear in range [-linthresh, +linthresh], log outside
+        b_all = [b for result_list in results.values() for b, _ in result_list]
+        b_nonzero = [b for b in b_all if abs(b) > 1e-12]
+        if b_nonzero:
+            linthresh = min(b_nonzero) * 0.1  # Linear threshold = 10% of smallest non-zero b
+        else:
+            linthresh = 1e-5  # Fallback
+
+        ax.set_xscale('symlog', linthresh=linthresh)
+        ax.axhline(0, ls=':', lw=1, color='gray', alpha=0.7)
+        ax.set_xlabel(r'$b = B/B_{\rm Q}$')
+        ax.set_ylabel(r'$\Delta R$ (km) relative to reference')
+
+        if self.config.style.show_title:
+            ax.set_title('Radius shift at fixed mass')
+
+        if self.config.style.grid:
+            ax.grid(True, alpha=self.config.style.grid_alpha)
+
+        if self.config.style.show_legend:
+            ax.legend(loc=self.config.style.legend_location)
+
+        plt.tight_layout()
+
+        # Save plot
+        output_path = os.path.join(self.config.output_directory, output_file)
+        plt.savefig(output_path, dpi=self.config.style.dpi, bbox_inches='tight')
+        plt.close(fig)
+
+        self.logger.info(f"Saved ΔR vs b plot: {output_path}")
+
+        # Print summary table
+        print("\n" + "="*80)
+        print(f"{'Target M*':<12} {'Overlap Range':<20} {'N_families':<12} {'ΔR range [km]':<20}")
+        print("="*80)
+        for s in summary:
+            overlap_str = f"[{s['overlap'][0]:.2f}, {s['overlap'][1]:.2f}]"
+            dR_range_str = f"[{s['dR_min']:+.3f}, {s['dR_max']:+.3f}]"
+            print(f"{s['M']:<12.2f} {overlap_str:<20} {s['N_families']:<12} {dR_range_str:<20}")
+        print("="*80 + "\n")
+
+        return output_path
+
 
 # ============================================================================
 # COMMAND LINE INTERFACE
@@ -1741,6 +1973,19 @@ RADIUS FILTERING:
     mrb_parser.add_argument('--output', default='mr_by_b.png',
                            help='Output filename (default: mr_by_b.png)')
 
+    # Delta-R vs b plot
+    deltaR_parser = subparsers.add_parser('deltaR', help='Radius shift at fixed mass vs magnetic field')
+    deltaR_parser.add_argument('--mr-target-masses', type=str, default='1.4',
+                              help='Comma/space-separated target masses in M_sun (default: 1.4)')
+    deltaR_parser.add_argument('--ref-b', type=str, default=None,
+                              help='Explicit reference family tag (e.g., b_0e00). Auto-picks b=0 if not specified.')
+    deltaR_parser.add_argument('--eos-types', nargs='*', default=None,
+                              help='EOS types to include (default: auto-discover all)')
+    deltaR_parser.add_argument('--r-end-cm', type=float, default=1.0e8,
+                              help='Boundary cutoff in cm (default: 1e8 cm = 1000 km)')
+    deltaR_parser.add_argument('--output', type=str, default='delta_radius_vs_b.png',
+                              help='Output filename (default: delta_radius_vs_b.png)')
+
     # Legacy aliases (hidden from help)
     mr_legacy = subparsers.add_parser('mass-radius', help=argparse.SUPPRESS)
     mr_legacy.add_argument('--eos-types', nargs='*', default=None)
@@ -1762,7 +2007,7 @@ RADIUS FILTERING:
     list_parser = subparsers.add_parser('list', help='List auto-discovery inventory')
 
     # Essential options only
-    for subparser in [mr_parser, md_parser, both_parser, mrb_parser, mr_legacy, md_legacy, profile_parser, eos_parser, list_parser]:
+    for subparser in [mr_parser, md_parser, both_parser, mrb_parser, deltaR_parser, mr_legacy, md_legacy, profile_parser, eos_parser, list_parser]:
         subparser.add_argument('--theme', choices=['default', 'dark'], default='default',
                               help='Plot theme (default: default)')
         subparser.add_argument('--dpi', type=int, default=300, help='Output resolution (default: 300)')
@@ -1948,6 +2193,35 @@ def execute_plotting_command(args) -> None:
             else:
                 logger.error("Failed to create magnetic field stratified M-R plot")
 
+        elif args.command == 'deltaR':
+            # Delta-R vs b plotting
+            # Parse target masses from comma/space-separated string
+            mass_str = args.mr_target_masses
+            target_masses = [float(x) for x in re.split(r'[,\s]+', mass_str.strip()) if x]
+
+            if not target_masses:
+                logger.error("No valid target masses provided")
+                return
+
+            data_dir = args.data_dir if args.data_dir else config.data_directory
+            eos_types = args.eos_types if hasattr(args, 'eos_types') else None
+            ref_b_tag = args.ref_b if hasattr(args, 'ref_b') else None
+            r_end_cm = args.r_end_cm if hasattr(args, 'r_end_cm') else 1.0e8
+            output_file = args.output if hasattr(args, 'output') else 'delta_radius_vs_b.png'
+
+            plot_path = plotter.plot_delta_radius_vs_b(
+                data_dir=data_dir,
+                target_masses=target_masses,
+                ref_b_tag=ref_b_tag,
+                r_end_cm=r_end_cm,
+                output_file=output_file,
+                eos_types=eos_types
+            )
+            if plot_path:
+                logger.info(f"✓ Saved: {plot_path}")
+            else:
+                logger.error("Failed to create ΔR vs b plot")
+
         elif args.command == 'list':
             # Auto-discovery inventory using helper
             root = os.path.abspath(config.data_directory)
@@ -1972,7 +2246,7 @@ def main():
         execute_plotting_command(args)
     else:
         print("No command specified. Available commands:")
-        print("  mr | md | both | mr-by-b | eos | profile | list")
+        print("  mr | md | both | mr-by-b | deltaR | eos | profile | list")
         print("Try --help for usage details.")
 
 
