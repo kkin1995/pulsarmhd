@@ -216,7 +216,7 @@ int main() {
   // Load EOS data
   std::string eos_filename =
       "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/"
-      "sahu_basu_datta_bbp_magnetic_bps_b_1e-05.csv";
+      "sahu_basu_datta_bbp_magnetic_bps_b_1e-04.csv";
 
   std::string out_file = "data/tov_solution_sbd_bbp_magnetic_bps_";
 

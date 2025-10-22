@@ -304,6 +304,9 @@ EquilibriumComposition MagneticBPSEOS::computeEquilibriumComposition(double nB) 
           if (std::fabs(relative_error) < rel_tolerance || width_small) {
             converged = true;
           } else {
+            std::cerr << std::scientific << "[no-converge] nB=" << nB << " A=" << A << " Z=" << Z
+                      << " rel_err=" << relative_error
+                      << " width=" << (gamma_e_upper - gamma_e_lower) << " nu_m=" << nu_m << "\n";
             continue; // try next nucleus
           }
         }
