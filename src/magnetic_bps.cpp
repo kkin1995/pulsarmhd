@@ -138,17 +138,32 @@ void MagneticBPSEOS::writeEOSResults(const std::string &output_file,
     std::cerr << "Error: Could not open file " << output_file << '\n';
     return;
   }
-  outfile << "log_n,log_rho,log_P\n";
+  outfile << "nB,rho,P,eps,Z,A,Ye,ne,Pe_elec,Ee_elec,Pe_lat,Ee_lat,"
+          << "gamma_e,nu_max,Gibbs_per_baryon,"
+          << "converged,rel_error,iterations\n";
 
   for (const auto &comp : results) {
     if (!comp.converged || !(comp.total_pressure > 0.0))
       continue;
-    const double ln = std::log10(comp.baryon_density);
-    const double lr = std::log10(comp.total_mass_density);
-    const double lp = std::log10(comp.total_pressure);
-    if (!std::isfinite(ln) || !std::isfinite(lr) || !std::isfinite(lp))
+
+    const double Ye = (comp.optimal_A > 0) ? double(comp.optimal_Z) / double(comp.optimal_A) : NAN;
+
+    outfile << std::setprecision(10) << comp.baryon_density << "," << comp.total_mass_density << ","
+            << comp.total_pressure << "," << comp.total_energy_density << "," << comp.optimal_Z
+            << "," << comp.optimal_A << "," << Ye << "," << comp.electron_density << ","
+            << comp.electron_pressure << "," << comp.electron_energy_density << ","
+            << comp.lattice_pressure << "," << comp.lattice_energy_density << "," << comp.gamma_e
+            << "," << comp.max_landau_level << "," << comp.gibbs_free_energy << ","
+            << (comp.converged ? 1 : 0) << "," << comp.relative_error << "," << comp.iterations
+            << ","
+            << "\n";
+
+    if (!std::isfinite(std::log10(comp.baryon_density)) ||
+        !std::isfinite(std::log10(comp.total_mass_density)) ||
+        !std::isfinite(std::log10(comp.total_pressure)))
       continue;
-    outfile << ln << "," << lr << "," << lp << "\n";
+    outfile << std::log10(comp.baryon_density) << "," << std::log10(comp.total_mass_density) << ","
+            << std::log10(comp.total_pressure) << "\n";
   }
   outfile.close();
 }
