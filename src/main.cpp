@@ -31,9 +31,11 @@ inline double twoGM_over_Rc2(double mass_solar, double radius_km) {
 }
 } // namespace
 
-bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
-                 std::vector<double> &log_P,
-                 std::vector<double> &epsilon /* erg/cm^3; optional, may stay empty */) {
+bool readEoSData(const std::string &filename,
+                 std::vector<double> &log_rho, // OUTPUT: log10(rho [g/cm^3])
+                 std::vector<double> &log_P,   // OUTPUT: log10(P   [dyn/cm^2])
+                 std::vector<double> &epsilon) // OUTPUT: epsilon   [erg/cm^3] (may be empty)
+{
   log_rho.clear();
   log_P.clear();
   epsilon.clear();
@@ -50,129 +52,177 @@ bool readEoSData(const std::string &filename, std::vector<double> &log_rho,
     return false;
   }
 
-  // tokenize header
+  auto norm = [](std::string s) {
+    s.erase(std::remove_if(
+                s.begin(), s.end(),
+                [](unsigned char ch) { return std::isspace(ch) || ch == '\"' || ch == '\''; }),
+            s.end());
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char ch) { return std::tolower(ch); });
+    return s;
+  };
+
+  // Parse header → normalized column names
   std::vector<std::string> cols;
   {
     std::stringstream sh(header);
     std::string tok;
-    while (std::getline(sh, tok, ',')) {
-      tok.erase(std::remove_if(tok.begin(), tok.end(),
-                               [](unsigned char ch) { return std::isspace(ch) || ch == '\"'; }),
-                tok.end());
-      std::transform(tok.begin(), tok.end(), tok.begin(),
-                     [](unsigned char ch) { return std::tolower(ch); });
-      cols.push_back(tok);
-    }
+    while (std::getline(sh, tok, ','))
+      cols.push_back(norm(tok));
   }
-  auto find_col = [&](const std::string &name) -> int {
-    for (size_t i = 0; i < cols.size(); ++i) {
-      if (cols[i] == name) {
-        return (int)i;
-      }
-    }
+  auto find_any = [&](std::initializer_list<const char *> names) -> int {
+    for (size_t i = 0; i < cols.size(); ++i)
+      for (auto *n : names)
+        if (cols[i] == n)
+          return (int)i;
     return -1;
   };
 
-  int i_logrho = find_col("log_rho");
-  int i_logp = find_col("log_p");
-  int i_rho = find_col("rho");
-  int i_p = find_col("p");
+  // Accept many aliases
+  const int i_logrho = find_any({"log_rho", "log10rho", "log10_rho"});
+  const int i_logp = find_any({"log_p", "log10p", "log10_p", "logpressure", "log_pressure"});
+  const int i_rho = find_any({"rho", "density", "mass_density", "total_mass_density"});
+  const int i_p = find_any({"p", "pressure", "total_pressure"});
+  int i_eps = find_any({"epsilon", "energy_density", "eps", "total_energy_density"});
 
-  // allow several spellings for epsilon (energy density, erg/cm^3)
-  int i_eps = find_col("epsilon");
-  if (i_eps < 0) {
-    i_eps = find_col("energy_density");
-  }
-  if (i_eps < 0) {
-    i_eps = find_col("eps");
-  }
+  enum class Mode { USE_LOGS, USE_LINEAR, LEGACY_LOGNRHOP, UNKNOWN } mode = Mode::UNKNOWN;
 
-  enum class Mode { USE_LOGS, USE_LINEAR, FALLBACK_FIRST_TWO } mode;
   if (i_logrho >= 0 && i_logp >= 0) {
-    mode = Mode::USE_LOGS;
-    std::cout << "[EoS] Using columns log_rho, log_P";
+    mode = Mode::USE_LOGS; // new/old files w/ explicit logs
   } else if (i_rho >= 0 && i_p >= 0) {
-    mode = Mode::USE_LINEAR;
-    std::cout << "[EoS] Using columns rho, P (computing logs)";
+    mode = Mode::USE_LINEAR; // new magnetic-BPS format (linear rho,P,eps)
+  } else if (find_any({"log_n", "lognb"}) >= 0 && find_any({"log_rho"}) >= 0 &&
+             find_any({"log_p"}) >= 0) {
+    mode = Mode::LEGACY_LOGNRHOP; // very old magnetic-BPS output
   } else {
-    mode = Mode::FALLBACK_FIRST_TWO;
-    i_logrho = 0;
-    i_logp = 1;
-    std::cout << "[EoS] Header unrecognized; assuming first two columns are log_rho,log_P";
-  }
-  if (i_eps >= 0) {
-    std::cout << " + epsilon\n";
-  } else {
-    std::cout << "\n";
+    std::cerr << "[EoS] Unrecognized header in " << filename
+              << " (need (log_rho,log_P) or (rho,P)).\n";
+    return false;
   }
 
+  // Read rows
   std::string line;
+  std::vector<double> tmp_lr, tmp_lp, tmp_eps;
+  tmp_lr.reserve(2048);
+  tmp_lp.reserve(2048);
+  tmp_eps.reserve(2048);
+
+  auto push_row = [&](double lr, double lp, double e_opt, bool have_eps) {
+    if (!std::isfinite(lr) || !std::isfinite(lp))
+      return;
+    tmp_lr.push_back(lr);
+    tmp_lp.push_back(lp);
+    if (have_eps)
+      tmp_eps.push_back(e_opt);
+    else
+      tmp_eps.push_back(std::numeric_limits<double>::quiet_NaN());
+  };
+
   while (std::getline(file, line)) {
-    if (line.empty()) {
+    if (line.empty())
       continue;
-    }
+
     std::vector<std::string> toks;
     {
       std::stringstream ss(line);
       std::string t;
-      while (std::getline(ss, t, ',')) {
-        t.erase(std::remove_if(t.begin(), t.end(),
-                               [](unsigned char ch) { return std::isspace(ch) || ch == '\"'; }),
-                t.end());
-        toks.push_back(t);
-      }
+      while (std::getline(ss, t, ','))
+        toks.push_back(norm(t));
     }
-    if (toks.size() < 2) {
+    if (toks.size() < 2)
       continue;
-    }
 
     try {
-      double lr = 0, lp = 0;
       if (mode == Mode::USE_LOGS) {
-        lr = std::stod(toks[(size_t)i_logrho]);
-        lp = std::stod(toks[(size_t)i_logp]);
+        const double lr = std::stod(toks[(size_t)i_logrho]);
+        const double lp = std::stod(toks[(size_t)i_logp]);
+        double e = std::numeric_limits<double>::quiet_NaN();
+        bool have = false;
+        if (i_eps >= 0 && (size_t)i_eps < toks.size()) {
+          e = std::stod(toks[(size_t)i_eps]);
+          have = std::isfinite(e);
+        }
+        push_row(lr, lp, e, have);
+
       } else if (mode == Mode::USE_LINEAR) {
-        double rho = std::stod(toks[(size_t)i_rho]);
-        double P = std::stod(toks[(size_t)i_p]);
-        if (!(rho > 0.0 && P > 0.0)) {
+        const double rho = std::stod(toks[(size_t)i_rho]);
+        const double P = std::stod(toks[(size_t)i_p]);
+        if (!(rho > 0.0 && P > 0.0) || !std::isfinite(rho) || !std::isfinite(P))
           continue;
+        const double lr = std::log10(rho);
+        const double lp = std::log10(P);
+        double e = std::numeric_limits<double>::quiet_NaN();
+        bool have = false;
+        if (i_eps >= 0 && (size_t)i_eps < toks.size()) {
+          e = std::stod(toks[(size_t)i_eps]);
+          have = std::isfinite(e) && (e > 0.0);
         }
-        lr = std::log10(rho);
-        lp = std::log10(P);
-      } else { // fallback: first two columns are log10
-        lr = std::stod(toks[0]);
-        lp = std::stod(toks[1]);
-      }
-      if (!std::isfinite(lr) || !std::isfinite(lp)) {
-        continue;
-      }
+        push_row(lr, lp, e, have);
 
-      log_rho.push_back(lr);
-      log_P.push_back(lp);
-
-      if (i_eps >= 0 && (size_t)i_eps < toks.size()) {
-        double e = std::stod(toks[(size_t)i_eps]); // already erg/cm^3
-        if (std::isfinite(e)) {
-          epsilon.push_back(e);
-        } else {
-          epsilon.push_back(std::numeric_limits<double>::quiet_NaN());
-        }
+      } else { // LEGACY_LOGNRHOP
+        const int i_lrho = find_any({"log_rho"});
+        const int i_lp = find_any({"log_p"});
+        // We ignore log_n; we just need (log_rho, log_P)
+        const double lr = std::stod(toks[(size_t)i_lrho]);
+        const double lp = std::stod(toks[(size_t)i_lp]);
+        push_row(lr, lp, std::numeric_limits<double>::quiet_NaN(), false);
       }
     } catch (...) {
-      continue;
+      continue; // skip malformed row
     }
   }
   file.close();
 
-  if (log_rho.empty()) {
+  if (tmp_lp.empty()) {
     std::cerr << "No usable rows read from " << filename << "\n";
     return false;
   }
 
-  // Require epsilon to match log_P length; if not, disable epsilon entirely.
-  if (!epsilon.empty() && epsilon.size() != log_P.size()) {
-    std::cerr << "[EoS] epsilon column length (" << epsilon.size() << ") != log_P length ("
-              << log_P.size() << "); disabling epsilon (fallback to rho*c^2).\n";
+  // Sort by log_P and deduplicate (strictly increasing for Steffen)
+  struct Row {
+    double lp, lr, e;
+    bool have;
+  };
+  std::vector<Row> rows;
+  rows.reserve(tmp_lp.size());
+  for (size_t i = 0; i < tmp_lp.size(); ++i) {
+    rows.push_back({tmp_lp[i], tmp_lr[i], tmp_eps[i], std::isfinite(tmp_eps[i])});
+  }
+  std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.lp < b.lp; });
+
+  std::vector<Row> cleaned;
+  cleaned.reserve(rows.size());
+  if (!rows.empty())
+    cleaned.push_back(rows.front());
+  for (size_t i = 1; i < rows.size(); ++i) {
+    if (rows[i].lp > cleaned.back().lp)
+      cleaned.push_back(rows[i]); // strict increase
+  }
+  if (cleaned.size() < 2) {
+    std::cerr << "[EoS] Fewer than 2 unique (log_P) rows after cleaning.\n";
+    return false;
+  }
+
+  // Move to outputs
+  log_P.reserve(cleaned.size());
+  log_rho.reserve(cleaned.size());
+  epsilon.reserve(cleaned.size());
+  bool all_eps = true;
+
+  for (const auto &r : cleaned) {
+    log_P.push_back(r.lp);
+    log_rho.push_back(r.lr);
+    if (r.have) {
+      epsilon.push_back(r.e);
+    } else {
+      epsilon.push_back(std::numeric_limits<double>::quiet_NaN());
+      all_eps = false;
+    }
+  }
+
+  // If some eps are missing, and some present → either drop eps entirely or backfill using rho*c^2.
+  if (!all_eps) {
+    // Drop epsilon entirely; caller will fall back to ρc² consistently.
     epsilon.clear();
   }
 
@@ -216,7 +266,7 @@ int main() {
   // Load EOS data
   std::string eos_filename =
       "/home/karan-kinariwala/Dropbox/KARAN/2-Areas/Education/PhD/3-Research/pulsarmhd/data/"
-      "sahu_basu_datta_bbp_magnetic_bps_b_1e-04.csv";
+      "sahu_basu_datta_bbp_magnetic_bps_b_1e-03.csv";
 
   std::string out_file = "data/tov_solution_sbd_bbp_magnetic_bps_";
 
