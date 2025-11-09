@@ -12,6 +12,7 @@
 #include <fstream> // ifstream/ofstream
 #include <iomanip> // setw, setprecision
 #include <iostream>
+#include <limits>
 #include <sstream> // stringstream
 #include <vector>
 #ifdef _OPENMP
@@ -152,13 +153,16 @@ void MagneticBPSEOS::writeEOSResults(const std::string &output_file,
     if (!comp.converged || !(comp.total_pressure > 0.0))
       continue;
 
-    const double Ye = (comp.optimal_A > 0) ? double(comp.optimal_Z) / double(comp.optimal_A) : NAN;
+    const double Ye = (comp.optimal_A > 0) ? double(comp.optimal_Z) / double(comp.optimal_A)
+                                           : std::numeric_limits<double>::quiet_NaN();
 
     // Precompute logs (guard non-positive)
-    const double log_n = (comp.baryon_density > 0.0) ? std::log10(comp.baryon_density) : NAN;
-    const double log_r =
-        (comp.total_mass_density > 0.0) ? std::log10(comp.total_mass_density) : NAN;
-    const double log_P = (comp.total_pressure > 0.0) ? std::log10(comp.total_pressure) : NAN;
+    const double log_n = (comp.baryon_density > 0.0) ? std::log10(comp.baryon_density)
+                                                     : std::numeric_limits<double>::quiet_NaN();
+    const double log_r = (comp.total_mass_density > 0.0) ? std::log10(comp.total_mass_density)
+                                                         : std::numeric_limits<double>::quiet_NaN();
+    const double log_P = (comp.total_pressure > 0.0) ? std::log10(comp.total_pressure)
+                                                     : std::numeric_limits<double>::quiet_NaN();
 
     outfile << comp.baryon_density << "," << comp.total_mass_density << "," << comp.total_pressure
             << "," << comp.total_energy_density << "," << comp.optimal_Z << "," << comp.optimal_A
